@@ -1,0 +1,2913 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>남양주시 주차관리과 지도 | VWorld (개선판)</title>
+  
+  <script src="https://map.vworld.kr/js/vworldMapInit.js.do?version=2.0&apiKey=C6357BB4-3419-3A99-BDF2-531C8939E646"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root { --bg:#0b1220; --panel:#0f172a; --muted:#94a3b8; --text:#e2e8f0; --accent:#38bdf8; --ok:#34d399; --warn:#f59e0b; --danger:#ef4444; }
+    * { box-sizing:border-box; }
+    html, body { height:100%; margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif; color:var(--text); background:var(--bg); }
+    .app { display:grid; grid-template-columns: 380px 1fr; grid-template-rows: 56px 1fr; height:100%; }
+    header { grid-column:1/3; display:flex; align-items:center; gap:12px; padding:10px 16px; background:linear-gradient(90deg, #0f172a, #0b1220); border-bottom:1px solid #1f2937; }
+    header h1 { font-size:18px; margin:0; font-weight:700; letter-spacing:0.2px; }
+    header small { color:var(--muted); }
+    .sidebar { grid-row:2; grid-column:1; background:var(--panel); border-right:1px solid #1f2937; overflow:auto; }
+    .map-wrap { grid-row:2; grid-column:2; position:relative; }
+    #map { position:absolute; inset:0; }
+
+    .section { padding:14px; border-bottom:1px dashed #1f2937; }
+    .section h2 { font-size:14px; margin:0 0 10px; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.5px; }
+    .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .row > * { flex:1; }
+
+    input[type="text"], select { width:100%; padding:10px 12px; background:#0b1220; border:1px solid #233046; color:var(--text); border-radius:10px; outline:none; }
+    input[type="file"] { width:100%; }
+    button { padding:10px 12px; border-radius:10px; border:1px solid #233046; background:#0b1220; color:var(--text); cursor:pointer; transition:.2s; font-weight:600; }
+    button:hover { border-color:#334155; transform:translateY(-1px); }
+    .btn-accent { background:linear-gradient(180deg, #0ea5e9, #0284c7); border-color:#0284c7; }
+    .btn-ok { background:linear-gradient(180deg, #10b981, #059669); border-color:#059669; }
+    .btn-warn { background:linear-gradient(180deg, #f59e0b, #d97706); border-color:#d97706; }
+    .btn-ghost { background:#0b1220; border-color:#334155; }
+
+    .pill { display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px; background:#0b1220; border:1px solid #233046; font-size:12px; color:#cbd5e1; }
+    .legend { display:flex; gap:8px; flex-wrap:wrap; }
+    .legend .chip { display:inline-flex; align-items:center; gap:6px; background:#0b1220; border:1px solid #233046; padding:4px 8px; border-radius:999px; font-size:12px; }
+    .legend .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+
+    .results { max-height:160px; overflow:auto; border:1px solid #233046; border-radius:10px; padding:6px; background:#0b1220; }
+    .results div { padding:6px 8px; border-radius:8px; cursor:pointer; }
+    .results div:hover { background:#111827; }
+
+    details { background:#0b1220; border:1px solid #233046; border-radius:12px; padding:8px 10px; }
+    summary { cursor:pointer; color:#cbd5e1; }
+
+    .floating-tools { position:absolute; right:12px; top:12px; display:flex; gap:8px; z-index:900; }
+    .floating-tools button { padding:8px 10px; font-size:12px; }
+
+    .footer { font-size:12px; color:#94a3b8; padding:10px 16px; }
+    .muted { color:#94a3b8; }
+
+    /* Hover Tooltip */
+    .hover-tip { position:absolute; z-index:950; max-width:360px; pointer-events:none; background:#0b1220; border:1px solid #233046; padding:8px 10px; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.35); font-size:12px; line-height:1.45; }
+    .hover-tip b { color:#e5e7eb; }
+    .hover-tip .kv { display:grid; grid-template-columns: 90px 1fr; gap:6px 10px; margin-top:6px; }
+    .hover-tip .k { color:#9aa5b1; text-align:right; }
+    .hover-tip .v { color:#e2e8f0; }
+
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: 56px auto 1fr; }
+      .sidebar { grid-column:1; grid-row:3; }
+      .map-wrap { grid-column:1; grid-row:2; height:50vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1> 남양주 한눈에 주정차 </h1>
+      <small>VWorld 2D API 기반 | 주소·장소검색 · CCTV · 탄력운영구간</small>
+      <span class="pill" style="margin-left:auto">REST 키: <code id="apiKeyState">코드 내 고정</code></span>
+    </header>
+
+    <aside class="sidebar" aria-label="도구 사이드바">
+      <div class="section">
+        <h2>기본 설정</h2>
+        <div class="row">
+          <select id="basemapSelect" onchange="setBasemap(this.value)">
+            <option value="GRAPHIC">배경지도</option>
+            <option value="GRAPHIC_WHITE">백지도</option>
+            <option value="GRAPHIC_NIGHT">야간지도</option>
+            <option value="PHOTO">항공사진</option>
+            <option value="PHOTO_HYBRID">하이브리드</option>
+          </select>
+          <button class="btn-ghost" onclick="goHome()">초기화</button>
+        </div>
+        <div class="legend">
+          <span class="chip"><span class="dot" style="background:#22d3ee"></span>주소검색</span>
+          <span class="chip"><span class="dot" style="background:#84cc16"></span>업로드</span>
+          <span class="chip"><span class="dot" style="background:#f43f5e"></span>장소검색</span>
+          <span class="chip"><span class="dot" style="background:#f43f5e"></span>CCTV</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>주소 검색</h2>
+        <div class="row">
+          <input id="addrInput" type="text" placeholder="예) 남양주시 다산중앙로 100" onkeydown="if(event.key==='Enter') geocodeSearch()" />
+          <button class="btn-accent" onclick="geocodeSearch()">검색</button>
+          <button class="btn-ghost" onclick="clearMarkersByCategory('주소검색')">초기화</button>
+        </div>
+        <div id="addrResults" class="results" aria-live="polite"></div>
+        <small class="muted">※ 도로명/지번 지원. 결과 클릭 시 지도 이동 및 마커 추가.</small>
+      </div>
+
+      <div class="section">
+        <h2>장소 검색(주변)</h2>
+        <div class="row">
+          <input id="poiKeyword" type="text" placeholder="예) 주차장, 병원, 경찰서…" onkeydown="if(event.key==='Enter') searchPOI()" />
+          <select id="poiRadius">
+            <option value="500">반경 500m</option>
+            <option value="1000" selected>반경 1km</option>
+            <option value="2000">반경 2km</option>
+            <option value="3000">반경 3km</option>
+          </select>
+        </div>
+        <div class="row">
+          <button onclick="quickPOI('주차장')">주차장</button>
+          <button onclick="quickPOI('병원')">병원</button>
+          <button onclick="quickPOI('경찰서')">경찰서</button>
+          <button onclick="quickPOI('소방서')">소방서</button>
+          <button class="btn-accent" onclick="searchPOI()">현 지도중심 주변</button>
+          <button class="btn-ghost" onclick="clearMarkersByCategory('장소검색')">초기화</button>
+        </div>
+        <div id="poiResults" class="results" aria-live="polite"></div>
+        <small class="muted">※ 검색어와 반경을 지정하면 <b>지도 중심</b> 기준으로 주변 장소를 조회하여 표시합니다.</small>
+      </div>
+
+      <div class="section">
+        <h2>CCTV 마커</h2>
+        <div class="row">
+          <button class="btn-ok" onclick="addCCTVMarkers()">CCTV 마커 추가</button>
+          <button class="btn-ghost" onclick="clearMarkersByCategory('CCTV')">CCTV 마커 초기화</button>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h2>탄력운영구간</h2>
+        <div class="row">
+          <button class="btn-ok" onclick="toggleEmbeddedGeoJSON()">탄력운영구간 표시</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>마커 찾기</h2>
+        <div class="row">
+          <input id="markerSearchInput" type="text" placeholder="예) 별내동 하나로마트" onkeydown="if(event.key==='Enter') searchMarker()" />
+          <button class="btn-accent" onclick="searchMarker()">검색</button>
+        </div>
+        <div id="markerSearchResults" class="results" aria-live="polite"></div>
+        <small class="muted">※ 업로드/검색으로 추가된 마커의 제목(title) 기준 검색</small>
+      </div>
+
+      <div class="section">
+        <h2>통계 · 차트</h2>
+        <div class="row">
+          <button class="btn-ghost" onclick="refreshStats()">집계 새로고침</button>
+          <button class="btn-warn" onclick="downloadCSV()">현재 마커 CSV 내보내기</button>
+        </div>
+        <canvas id="statsChart" height="160" aria-label="카테고리별 마커 분포"></canvas>
+        <small class="muted">업로드/검색으로 추가된 포인트의 <b>카테고리</b> 기준 분포를 표시합니다.</small>
+      </div>
+
+     <div class="section">
+        <h2>데이터 업로드 (XLS/XLSX/CSV)</h2>
+        <div class="row"><input id="fileInput" type="file" accept=".xls,.xlsx,.csv" /></div>
+        <div class="row">
+          <select id="latField"></select>
+          <select id="lonField"></select>
+        </div>
+        <div class="row">
+          <select id="titleField"></select>
+          <select id="categoryField"></select>
+        </div>
+        <div class="row">
+          <button class="btn-ok" onclick="loadFile()">지도에 올리기</button>
+          <button class="btn-ghost" onclick="clearMarkersByCategory('업로드')">마커 초기화</button>
+        </div>
+        <details style="margin-top:8px">
+          <summary>열 매핑 안내</summary>
+          <div class="muted" style="margin-top:6px; line-height:1.5">
+            • 위경도 열명이 자동 탐지되면 상단 셀렉트에 채워집니다.<br/>
+            • 위경도 없이 주소만 있을 경우, <b>제목</b> 필드에 주소를 선택 후 업로드하면 최대 50건까지 지오코딩합니다.<br/>
+            • 업로드 후 마커에 <b>마우스를 올리면</b> 위도·경도 외의 <b>모든 칼럼</b>이 툴팁으로 표시됩니다.
+          </div>
+        </details>
+      </div>
+
+      <div class="section">
+        <h2>연결 진단 · 테스트</h2>
+        <div class="row">
+          <button class="btn-ghost" onclick="runDiagnostics()">진단 실행</button>
+          <button class="btn-ghost" onclick="testAddresses()">테스트 주소</button>
+        </div>
+        <div id="diagBox" class="results" aria-live="polite"></div>
+        <small class="muted">혼합콘텐츠(HTTP)나 CORS로 인한 <b>Failed to fetch</b>를 자동 점검합니다.</small>
+      </div>
+
+      <div class="footer">©문의 - dpsdkfwl11@korea.kr </div>
+    </aside>
+
+    <main class="map-wrap">
+      <div id="map" role="application" aria-label="주민 안내 지도"></div>
+      <div class="floating-tools">
+        <button onclick="locateMe()">내 위치</button>
+        <button onclick="toggleCluster()" id="clusterBtn">클러스터: 꺼짐</button>
+        <button onclick="toggleManualMarker()">마커 수동 추가: 꺼짐</button>
+      </div>
+      <div id="hoverTip" class="hover-tip" style="display:none"></div>
+    </main>
+  </div>
+
+<script>
+  // ===== 키/상수 =====
+  // ✅ 아래 REST 키에 본인 VWorld 발급키를 넣으면 별도 입력 없이 즉시 사용됩니다.
+  const VWORLD_REST_KEY = 'C6357BB4-3419-3A99-BDF2-531C8939E646';
+
+  const EPSG4326 = 'EPSG:4326';
+  const EPSG3857 = 'EPSG:900913'; // VWorld 예제 호환
+  const VWORLD_ADDRESS_API = 'https://api.vworld.kr/req/address';
+  const VWORLD_SEARCH_API  = 'https://api.vworld.kr/req/search';
+  // 마커 색상 팔레트 (카테고리별)
+  const COLORS = ['#22d3ee','#a78bfa','#34d399','#f472b6','#f97316','#60a5fa','#f43f5e','#84cc16','#eab308','#38bdf8','#fb7185','#4ade80'];
+
+  // ===== 전역 상태 =====
+  let vmap; // vw.ol3.Map 인스턴스
+  let vectorSource;                 // 원본 마커 소스 (포인트용)
+  let vectorLayer; // 단일 마커 레이어 (포인트용)
+  let clusterSource;                // 클러스터 소스 (포인트용)
+  let clusterLayer; // 클러스터 레이어 (포인트용)
+  let geojsonSource;                // GeoJSON 소스 (선, 면용)
+  let geojsonLayer; // GeoJSON 레이어 (선, 면용)
+  let useCluster = false;            // 클러스터 사용여부
+  let chart; // Chart.js 인스턴스
+  let currentApiKey = null;         // 검색/지오코딩 REST 키
+  let hoverOverlay; // 마우스오버 툴팁 오버레이
+  let manualMarkerEnabled = false;  // 수동 마커 추가 모드 활성화 여부
+  
+  // 내재화된 GeoJSON 데이터
+  const embeddedGeoJSON = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"점심시간":"12:00~14:00","공휴일":"09:00~18:00","저녁시간":"18:00~20:00"},"geometry":{"coordinates":[[[127.20865306683413,37.63699282577089],[127.20671363731344,37.63343497948429],[127.20686487723054,37.63345611570739],[127.20880430675118,37.63699282577089],[127.20865306683413,37.63699282577089]]],"type":"Polygon"},"id":0},{"type":"Feature","properties":{"심야":"20:00-08:00"},"geometry":{"coordinates":[[127.20856875994235,37.6371651878039],[127.20782931582494,37.63721284974197],[127.20689211339624,37.63666133116037],[127.20654818590003,37.6361915158065],[127.20573135809519,37.63526549423709],[127.20573135809519,37.63472077027549],[127.20524126141123,37.6339377225854]],"type":"LineString"},"id":1},{"type":"Feature","properties":{"점심":"11:30~14:00","저녁":"18:00~20:00"},"geometry":{"coordinates":[[127.21297631512027,37.63624274071597],[127.21423368146151,37.63603530024952],[127.21438037420131,37.63501468471976],[127.21417081314564,37.63607678838926],[127.2144746766777,37.63624274071597],[127.21570060886012,37.6362510383229]],"type":"LineString"},"id":2},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.20327363842352,37.63297341175708],[127.2052749465164,37.63387788521851],[127.20606080048088,37.63403554460348],[127.20907847970051,37.634060438160176],[127.21047206072745,37.63456660533333],[127.21222189555345,37.634757454356134]],"type":"LineString"},"id":3},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.20677330807382,37.63323064844914],[127.21000054835076,37.633736821274596],[127.21245241271566,37.63466617879783]],"type":"LineString"},"id":4},{"type":"Feature","properties":{"점심":"11:30~14:00","심야":"20:00~08:00"},"geometry":{"coordinates":[[127.20259360997102,37.62954481079146],[127.2033021940747,37.629161564354916],[127.20271458774488,37.62716317591806],[127.20195415602336,37.62619133746543],[127.2007962259006,37.625520624644196],[127.20001851164062,37.62472671185009],[127.19901612437127,37.62367271107395]],"type":"LineString"},"id":5},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.20535911662955,37.63226626118761],[127.20234969939895,37.62957736614004],[127.19895445944707,37.62369506905357]],"type":"LineString"},"id":6},{"type":"Feature","properties":{"공휴일":"지정(공원편도)","점심":"11:30~14:00","저녁":"18:00~20:00"},"geometry":{"coordinates":[[127.15279710030177,37.6114837604226],[127.15623591030692,37.613715697346294]],"type":"LineString"},"id":7},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.15893733426111,37.60463156230023],[127.15934000292566,37.603993538859186],[127.15932815973014,37.603074024863105]],"type":"LineString"},"id":8},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.16498789673545,37.60990781322718],[127.15638536512017,37.60534364021595],[127.15501737844033,37.605010173675296],[127.154372846255,37.60497891111024]],"type":"LineString"},"id":9},{"type":"Feature","properties":{"공휴일":"지정","점심":"11:30~14:00","심야":"20:00~07:00"},"geometry":{"coordinates":[[127.15612348462952,37.61058986479779],[127.15699720204628,37.60889542939978]],"type":"LineString"},"id":10},{"type":"Feature","properties":{"심야":"20:00~07:00"},"geometry":{"coordinates":[[127.1630331955443,37.614307715322326],[127.16447181374048,37.61347892294833],[127.1643223469095,37.61231711814847],[127.16399538821832,37.61160670627174]],"type":"LineString"},"id":11},{"type":"Feature","properties":{"주말,공휴일":"지정"},"geometry":{"coordinates":[[127.17511147932788,37.59646042216828],[127.17703187972228,37.596328746363454]],"type":"LineString"},"id":12},{"type":"Feature","properties":{"일요일":"08:00~17:00"},"geometry":{"coordinates":[[[127.12832874305224,37.65442283662141],[127.1273979384585,37.6557889734476],[127.12716165729142,37.65568693920059],[127.12814258213263,37.65426411370056],[127.12832874305224,37.65442283662141]]],"type":"Polygon"},"id":13},{"type":"Feature","properties":{"일요일":"17:00~18:00"},"geometry":{"coordinates":[[[127.11989858127214,37.666168568131724],[127.1205230581059,37.6647326544103],[127.12101074477471,37.66414415715474],[127.12119511412669,37.66424302501973],[127.12064200607449,37.66489272485681],[127.12009484541852,37.66624389398591],[127.11989858127214,37.666168568131724]]],"type":"Polygon"},"id":14},{"type":"Feature","properties":{"저녁":"18:00~20:00","점심":"11:30~14:00"},"geometry":{"coordinates":[[127.11465287502278,37.66714117950765],[127.1130672260984,37.666423942535545],[127.11418365238131,37.66477170956733]],"type":"LineString"},"id":15},{"type":"Feature","properties":{"점심":"11:30~14:00","저녁":"17:30~20:00","공휴일":"09:00~24:00"},"geometry":{"coordinates":[[[127.12498244021242,37.658737292654195],[127.12705349186848,37.65581673960526],[127.12726383305176,37.65594483644587],[127.12527368185118,37.65890381195395],[127.12498244021242,37.658737292654195]]],"type":"Polygon"},"id":16},{"type":"Feature","properties":{"공휴일":"09:00~24:00"},"geometry":{"coordinates":[[[127.12950152878955,37.65945511108531],[127.12974103756244,37.65610528399513],[127.12999052587043,37.656160588971304],[127.12973105803064,37.6594630114425],[127.12950152878955,37.65945511108531]]],"type":"Polygon"},"id":17},{"type":"Feature","properties":{"점심":"11:30~14:00","별내택지지구12개구간":"표시된 곳 외 12:00~14:00"},"geometry":{"coordinates":[[127.11191120969914,37.65043157208082],[127.12088236104802,37.64376640955089],[127.12226557821674,37.6427024315374],[127.12637570923096,37.6422956123875],[127.1274427624756,37.64292148708019],[127.12906310258609,37.64705212780166],[127.12835173375743,37.65415504095159],[127.11996804196866,37.66586526323124],[127.11575422065056,37.67375210205138],[127.11421794204995,37.67587133385659]],"type":"LineString"},"id":18},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.11408625387145,37.65321673229231],[127.11707102372281,37.65206992018514],[127.11869508967152,37.65078407948903],[127.11970464417988,37.650679821159386],[127.12290888240324,37.64807331535262],[127.12431347997989,37.64657887743131],[127.12769329290126,37.64355515525526]],"type":"LineString"},"id":19},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.11843821144356,37.668823682949565],[127.11459988167269,37.667158867786384]],"type":"LineString"},"id":20},{"type":"Feature","properties":{"공휴일":"편도만 지정"},"geometry":{"coordinates":[[[127.12865069734733,37.65317169901553],[127.12890181594281,37.65003917031453],[127.12895762007633,37.65004800697024],[127.12870092106607,37.653180535299185],[127.12865069734733,37.65317169901553]]],"type":"Polygon"},"id":21},{"type":"Feature","properties":{"공휴일":"지정","점심":"12:00~14:00","저녁":"18:00~24:00"},"geometry":{"coordinates":[[[127.10902168068776,37.64378686289014],[127.10912213784496,37.64363913761113],[127.11166226888008,37.644843658240404],[127.11151875865181,37.64496865454532],[127.10902168068776,37.64378686289014]]],"type":"Polygon"},"id":22},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.12696577884896,37.64414883614219],[127.1251450458771,37.6429160752576],[127.12506588357331,37.64245639647096]],"type":"LineString"},"id":23},{"type":"Feature","properties":{"경은특수학교":"08:00~09:30","오후":"12:30~16:00"},"geometry":{"coordinates":[[127.12371019409676,37.69946887111287],[127.1231464513059,37.69914953934739],[127.12280051822836,37.69876938068981],[127.12269801953954,37.698252361787794]],"type":"LineString"},"id":24},{"type":"Feature","properties":{"점심":"11:30~14:00","저녁":"18:00~20:00"},"geometry":{"coordinates":[[127.11447072584997,37.70818510733163],[127.11567934447305,37.708151260177175],[127.1181072774553,37.70771124576068],[127.11949772365722,37.70712737644301],[127.12169035035947,37.705663451989054],[127.12235348624102,37.70507956653948]],"type":"LineString"},"id":25},{"type":"Feature","properties":{"심야":"20:00~07:00"},"geometry":{"coordinates":[[127.11512316461022,37.71068129235566],[127.11570073457199,37.71063052332762],[127.1164601321127,37.710774368815805]],"type":"LineString"},"id":26},{"type":"Feature","properties":{"심야(보도없는편도)":"20:00~08:00"},"geometry":{"coordinates":[[127.12024555162265,37.71140221643397],[127.12067510503914,37.710905554053625],[127.12228317680314,37.710496022921035],[127.12328546810897,37.70944168767528],[127.12346169515251,37.70852675650396]],"type":"LineString"},"id":27},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.19794668932343,37.70284983913105],[127.19351862328341,37.699821729674866]],"type":"LineString"},"id":28},{"type":"Feature","properties":{"심야(편도)":"20:00~08:00"},"geometry":{"coordinates":[[127.22159077719482,37.57647891523138],[127.22267485013714,37.57632133484776],[127.22331867853222,37.57603618852076],[127.22312931724042,37.57571352162387],[127.22332814659791,37.575353333668104]],"type":"LineString"},"id":29},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.20520536230401,37.58820227154479],[127.20702734829558,37.58572190825019],[127.20952673933397,37.58346359516118],[127.21082315244144,37.58226962326182],[127.2119210157951,37.580983073968],[127.2137430017849,37.58257505975597]],"type":"LineString"},"id":30},{"type":"Feature","properties":{"예터교회(편도)":"공휴일허용","심야(편도)":"20:00~08:00"},"geometry":{"coordinates":[[127.2180660121191,37.58030289954539],[127.21853756002525,37.5800009481931],[127.21892611550123,37.57981708612654],[127.21913736896363,37.57952709137466]],"type":"LineString"},"id":31},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.21890300647124,37.58812912212804],[127.22242238450167,37.58929612337269],[127.22446903818519,37.588978632199016]],"type":"LineString"},"id":32},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.21205439414513,37.58770894902317],[127.21246278345956,37.5874754535177],[127.21313998599487,37.587438585739065]],"type":"LineString"},"id":33},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.21052939607068,37.58720099295185],[127.21057075195057,37.58880268137702],[127.21205439414513,37.588769910603915],[127.21202854671958,37.58775810587811],[127.2114392254303,37.5875328033589],[127.21119109015007,37.58752051411081]],"type":"LineString"},"id":34},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.21209575002484,37.58825786539687],[127.21368278191966,37.588204612492945]],"type":"LineString"},"id":35},{"type":"Feature","properties":{"09:00~18:00금지":"그 외 시간 허용"},"geometry":{"coordinates":[[127.22391388289014,37.57607967138611],[127.22427713589559,37.57633841120379],[127.22485190331025,37.57634569963662]],"type":"LineString"},"id":36},{"type":"Feature","properties":{"공휴일":"08:00~18:00"},"geometry":{"coordinates":[[[127.22304427685407,37.59145947928455],[127.22308957564746,37.591498636238256],[127.22146293717691,37.59297679618109],[127.22140116609592,37.59295069206607],[127.22304427685407,37.59145947928455]]],"type":"Polygon"},"id":37},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.18652403283141,37.650850839989985],[127.18487647532766,37.650132057907]],"type":"LineString"},"id":38},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.18743488540684,37.65082539899355],[127.18890149090339,37.64985311096538],[127.19051545867711,37.64935862816991],[127.1915728755547,37.649112948807556],[127.19261612229053,37.64830044928341]],"type":"LineString"},"id":39},{"type":"Feature","properties":{"심야(편도)":"20:00~08:00"},"geometry":{"coordinates":[[127.18047322806751,37.65835012259862],[127.18187610358979,37.65840565315095],[127.18259312885738,37.65860309477857],[127.18264768512773,37.658282251867206],[127.18283473519904,37.6580786393001],[127.18281914769148,37.65752949959311]],"type":"LineString"},"id":40},{"type":"Feature","properties":{"점심":"11:30~14:00","저녁":"18:00~20:00"},"geometry":{"coordinates":[[127.20130444999182,37.71787089106948],[127.20338499263056,37.71816519420412]],"type":"LineString"},"id":41},{"type":"Feature","properties":{"공휴일":"지정","저녁":"18:00~20:00"},"geometry":{"coordinates":[[127.19703181378435,37.71860233903284],[127.19670987910712,37.7185386744158],[127.1970385207564,37.71724945414182]],"type":"LineString"},"id":42},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.20296182835136,37.72227263785004],[127.20358955495942,37.7173072433946]],"type":"LineString"},"id":43},{"type":"Feature","properties":{"공휴일,매 2/7장 허용":"롯데캐슬아파트쪽은 맞은편 편도","점심":"11:30~14:00","저녁":"18:00~20:00"},"geometry":{"coordinates":[[[127.17965068883359,37.71426148164679],[127.1797088930474,37.71415623886871],[127.18490321258872,37.717692979354624],[127.18564323759313,37.71845594968693],[127.18482837859892,37.71772586616899],[127.17965068883359,37.71426148164679]]],"type":"Polygon"},"id":44},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.19386847165163,37.72184034950499],[127.19655079228164,37.72027908962292],[127.19686710367654,37.71964857149658]],"type":"LineString"},"id":45},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.19694301841201,37.7195284721973],[127.20314272175563,37.720459236673065]],"type":"LineString"},"id":46},{"type":"Feature","properties":{"점심":"11:30~14:00","저녁":"18:00~20:00"},"geometry":{"coordinates":[[[127.19679692334404,37.71936480253531],[127.19892714967926,37.71185694562375],[127.19852773224136,37.70982563113648],[127.19873695089882,37.70981058415482],[127.19911734845954,37.71172152639038],[127.19700614200303,37.71940993765121],[127.19679692334404,37.71936480253531]]],"type":"Polygon"},"id":47},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.1871760714335,37.71324283156298],[127.18451328851603,37.70993257463135]],"type":"LineString"},"id":48},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.14541492595663,37.65888325135538],[127.14450027897004,37.658218400799484],[127.14391823088727,37.656941344416225]],"type":"LineString"},"id":49},{"type":"Feature","properties":{"공휴일":"지정"},"geometry":{"coordinates":[[127.144798178055,37.65118273724046],[127.14541768466995,37.651445499714185]],"type":"LineString"},"id":50},{"type":"Feature","properties":{"공휴일":"지정","저녁/심야":"18:00~08:00"},"geometry":{"coordinates":[[127.1406659858099,37.65358721961576],[127.14094808257335,37.653079225978885],[127.14144036907857,37.6529171927951],[127.1422092210384,37.651905572218496]],"type":"LineString"},"id":51},{"type":"Feature","properties":{"점심":"11:30~14:00","심야":"20:00~08:00"},"geometry":{"coordinates":[[127.22950415373327,37.644206772561176],[127.23114234957961,37.643541273169674],[127.23332186231238,37.64136425893359]],"type":"LineString"},"id":52},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.23641829797356,37.64920877582652],[127.23770036428624,37.64854332125189],[127.23874026251929,37.64858843700446]],"type":"LineString"},"id":53},{"type":"Feature","properties":{"점심":"11:30~14:00","저녁(금호어울림 편도)":"18:00~20:00"},"geometry":{"coordinates":[[127.2335575594559,37.64417161683693],[127.23477131833647,37.64502590292038]],"type":"LineString"},"id":54},{"type":"Feature","properties":{"점심":"11:30~14:00","심야":"20:00~08:00"},"geometry":{"coordinates":[[127.2343161587554,37.64659429319917],[127.23596821945421,37.64500588070261],[127.23685325197135,37.644959162173805],[127.23724098050258,37.644565390549346]],"type":"LineString"},"id":55},{"type":"Feature","properties":{"심야(편도)":"20:00~08:00"},"geometry":{"coordinates":[[127.24326780020192,37.64983277987554],[127.24331837348893,37.64799750627657]],"type":"LineString"},"id":56},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.2438988207561,37.65253969078181],[127.24399008763532,37.64730978252716]],"type":"LineString"},"id":57},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.23662373168179,37.6429379320538],[127.23688097693588,37.644255148488526],[127.24135704436975,37.64721540534336],[127.24379229944725,37.647242563116805]],"type":"LineString"},"id":58},{"type":"Feature","properties":{"공휴일":"지정","심야":"20:00~08:00"},"geometry":{"coordinates":[[[127.23552669230077,37.64535904156976],[127.2354684038616,37.64543156792378],[127.23338667389788,37.64402718138494],[127.23328675086009,37.643539266231784],[127.23204603980213,37.64274145211793],[127.23217927051905,37.642682110229416],[127.23334503929914,37.6434931119298],[127.23353655845636,37.64404696166156],[127.23552669230077,37.64535904156976]]],"type":"Polygon"},"id":59},{"type":"Feature","properties":{"공휴일 ":"지정"},"geometry":{"coordinates":[[127.23986591147104,37.65574414089947],[127.24009727905468,37.652401163695416]],"type":"LineString"},"id":60},{"type":"Feature","properties":{"공휴일":"호평 우미린아파트~호평IC일부구간해제"},"geometry":{"coordinates":[[127.24017439296193,37.66120859346459],[127.24524519919873,37.66223122544598],[127.25099082755685,37.66120859346459],[127.25509760218893,37.65965172369842],[127.25542537293472,37.65858326477081],[127.25548321482984,37.655332002310985]],"type":"LineString"},"id":61},{"type":"Feature","properties":{"점심":"11:30~14:00","심야":"20:00~08:00"},"geometry":{"coordinates":[[127.23337416226445,37.6392499145455],[127.24148070742376,37.64462973965942],[127.24393583253135,37.64552226387171]],"type":"LineString"},"id":62},{"type":"Feature","properties":{"심야":"21:00~08:00"},"geometry":{"coordinates":[[127.24332905803203,37.6618181793976],[127.24394778672024,37.645612037596294]],"type":"LineString"},"id":63},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.23601309052623,37.64891470433565],[127.23915880829537,37.6459177932843]],"type":"LineString"},"id":64},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.2333702999619,37.64135868267161],[127.23418646065414,37.6413097223498],[127.23647418380614,37.642876436638474]],"type":"LineString"},"id":65},{"type":"Feature","properties":{"점심(어린이보호구역제외)":"11:30~14:00"},"geometry":{"coordinates":[[[127.23732131409236,37.64445850783082],[127.23721142831391,37.64453177879555],[127.23668513327243,37.643950188525466],[127.23658103095755,37.6429243804146],[127.23748325102821,37.642022207109946],[127.23758735334303,37.642104639643264],[127.23668513327243,37.642979334780065],[127.236812369436,37.64400514213132],[127.23732131409236,37.64445850783082]]],"type":"Polygon"},"id":66},{"type":"Feature","properties":{"점심(어린이보호구역제외)":"11:30~14:00"},"geometry":{"coordinates":[[[127.24052424503844,37.64676690186576],[127.24062256389158,37.64669363310577],[127.24143224857085,37.64715156166818],[127.243896003381,37.64717445802182],[127.2439017868428,37.64727062263151],[127.24127031163499,37.64720193363755],[127.24052424503844,37.64676690186576]]],"type":"Polygon"},"id":67},{"type":"Feature","properties":{"점심,저녁,심야":"지정"},"geometry":{"coordinates":[[[127.23595654175466,37.648832953724394],[127.235892923672,37.64878258286119],[127.23784195036399,37.646987526159975],[127.23790556844483,37.64703789824058],[127.23595654175466,37.648832953724394]]],"type":"Polygon"},"id":68},{"type":"Feature","properties":{"점심":"11:30~14:00","저녁":"18:00~20:00"},"geometry":{"coordinates":[[127.23752881943784,37.64677639904639],[127.23638369396338,37.646025390930205]],"type":"LineString"},"id":69},{"type":"Feature","properties":{"3/8장 허용구간":"CU 및 카센타 쪽 편도"},"geometry":{"coordinates":[[127.30360208366835,37.6549098217736],[127.30522977844822,37.65494217289604]],"type":"LineString"},"id":70},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[[127.24353079754269,37.662044857059016],[127.24356242548652,37.66191966905248],[127.24558661387448,37.66214500731263],[127.25045731718075,37.66131876368061],[127.25479034544747,37.65980813285945],[127.25535238974948,37.658584527683715],[127.25536539470733,37.65535164707205],[127.25552145419061,37.65534135104873],[127.25543041949157,37.65906841808386],[127.25470214189875,37.6600567801641],[127.24943513430975,37.66169372591675],[127.2453255678941,37.66229084179737],[127.24353079754269,37.662044857059016]]],"type":"Polygon"},"id":71},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.24332540840095,37.66194041301853],[127.24356236399677,37.655958420513755],[127.24373349859457,37.65597926452989],[127.24348337879746,37.66187788597327]],"type":"LineString"},"id":72},{"type":"Feature","properties":{"점심":"11:30~14:00","호평제일교회200m구간":"공휴일허용","심야":"20:00~08:00"},"geometry":{"coordinates":[[127.23987646644127,37.655847369641506],[127.24709882575269,37.65607609492869],[127.24895079701167,37.656385534138764],[127.25535531564873,37.65654695260312]],"type":"LineString"},"id":73},{"type":"Feature","properties":{"평동초방면 100m":"심야(19:00~07:00)"},"geometry":{"coordinates":[[127.24506386894359,37.653771069379175],[127.24618596259643,37.65378555383839]],"type":"LineString"},"id":74},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.24006934817862,37.65376141142504],[127.24361248085296,37.65383866185255]],"type":"LineString"},"id":75},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.24252087887652,37.65577955247552],[127.24256966555691,37.65383383370376]],"type":"LineString"},"id":76},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.2396833840757,37.65923242032477],[127.243900334589,37.659352427514236],[127.24548513625325,37.65960335101035],[127.24686322465601,37.65940697617286],[127.24993636179488,37.65801051789836],[127.25420839912749,37.65865419243562],[127.25536599338648,37.658610553069806]],"type":"LineString"},"id":77},{"type":"Feature","properties":{"저녁":"18:00~20:00","심야":"20:00~08:00","점심":"11:30~14:00"},"geometry":{"coordinates":[[127.24770495617366,37.660483287605956],[127.24711824527583,37.65938017072621]],"type":"LineString"},"id":78},{"type":"Feature","properties":{"심야":"20:00~08:00"},"geometry":{"coordinates":[[127.24489026539186,37.655851499826824],[127.24493610218087,37.65393542996571]],"type":"LineString"},"id":79},{"type":"Feature","properties":{"점심(이마트건너편 편도)":"11:30~14:00"},"geometry":{"coordinates":[[[127.24242395327275,37.65578279290787],[127.24244228798744,37.653844947448704],[127.24253396156547,37.653844947448704],[127.24249729213454,37.65582633941628],[127.24242395327275,37.65578279290787]]],"type":"Polygon"},"id":80},{"type":"Feature","properties":{"저녁":"18:00~20:00"},"geometry":{"coordinates":[[[127.2438247608502,37.65592031844375],[127.24380214393273,37.65583079003039],[127.24786188046374,37.65610832776143],[127.24923020391793,37.656305289392805],[127.25538200523567,37.6564395811145],[127.25538200523567,37.65653806155612],[127.24895880091952,37.65638586445438],[127.2469685122577,37.65609937494729],[127.2438247608502,37.65592031844375]]],"type":"Polygon"},"id":81},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.30223855621534,37.66793900412847],[127.30143419544373,37.66638349500117],[127.30146474078896,37.66419121953646],[127.30288000683339,37.662272927012324],[127.30314473082296,37.661418544618115],[127.3008436470825,37.655203826441806]],"type":"LineString"},"id":82},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.30524274825575,37.647614595102084],[127.30415477987884,37.647601135192716],[127.29835794824544,37.646672395560614],[127.29890193243386,37.64560904171009],[127.30002389982388,37.644747579327955]],"type":"LineString"},"id":83},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.29093440722659,37.659852307808464],[127.28988831111877,37.658036739343444],[127.28988831111877,37.65721653376713]],"type":"LineString"},"id":84},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.28667316920786,37.65879413319912],[127.28825302594669,37.65811905838309],[127.28891405387145,37.65757480755049],[127.289826272406,37.657208482628164]],"type":"LineString"},"id":85},{"type":"Feature","properties":{"저녁":"18:00~24:00"},"geometry":{"coordinates":[[127.30457729100033,37.657427987830744],[127.30507723283642,37.65641022794114],[127.30383928162172,37.65633012587624]],"type":"LineString"},"id":86},{"type":"Feature","properties":{"점심":"12:00~14:00","심야":"20:00~08:00"},"geometry":{"coordinates":[[127.30370297462832,37.657471085316615],[127.30536349572924,37.65796111259553]],"type":"LineString"},"id":87},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.30608684182323,37.654921213268295],[127.30612850364446,37.6546243580534],[127.30665225223561,37.6534180770321],[127.30664630054684,37.65314948835619]],"type":"LineString"},"id":88},{"type":"Feature","properties":{"공휴일":"마석교회 앞 편도"},"geometry":{"coordinates":[[127.30616572256537,37.65028921620423],[127.30594551008909,37.64950697492418]],"type":"LineString"},"id":89},{"type":"Feature","properties":{"점심":"11:30~14:00"},"geometry":{"coordinates":[[127.30042496783983,37.65819953492867],[127.30171807675777,37.657899387560164]],"type":"LineString"},"id":90}]}
+  // ===== 초기화 =====
+  document.addEventListener('DOMContentLoaded', () => {
+    // REST 키 자동 적용
+    if (VWORLD_REST_KEY && !/YOUR_VWORLD_REST_API_KEY/.test(VWORLD_REST_KEY)) {
+      currentApiKey = VWORLD_REST_KEY;
+      document.getElementById('apiKeyState').textContent = VWORLD_REST_KEY.slice(0,6) + '… (고정)';
+    } else {
+      document.getElementById('apiKeyState').textContent = '미설정';
+    }
+
+    initMap();
+    initChart();
+    wireFileInput();
+  });
+
+  function initMap() {
+    // VWorld MapOptions 설정 (공식 예제 패턴)
+    vw.ol3.MapOptions = {
+      basemapType: vw.ol3.BasemapType.GRAPHIC,
+      controlDensity: vw.ol3.DensityType.BASIC,
+      interactionDensity: vw.ol3.DensityType.FULL,
+      controlsAutoArrange: true,
+      homePosition: vw.ol3.CameraPosition,
+      initPosition: vw.ol3.CameraPosition
+    };
+    vmap = new vw.ol3.Map('map', vw.ol3.MapOptions);
+    // 서울 도심 기준 초기 시점
+    moveToLonLat(126.9784, 37.5667, 11);
+
+    // 레이어 준비
+    vectorSource = new ol.source.Vector({ features: [] });
+    vectorLayer  = new ol.layer.Vector({ source: vectorSource, id: 'markers_layer' });
+    clusterSource = new ol.source.Cluster({ distance: 40, source: vectorSource });
+    clusterLayer  = new ol.layer.Vector({ source: clusterSource, id: 'cluster_layer', style: clusterStyleFn });
+    // GeoJSON 전용 레이어 추가
+    geojsonSource = new ol.source.Vector({ features: [] });
+    geojsonLayer = new ol.layer.Vector({ source: geojsonSource, id: 'geojson_layer' });
+
+    vmap.addLayer(vectorLayer);
+    vmap.addLayer(geojsonLayer); // 기본은 클러스터 사용
+
+    // Hover 오버레이
+    const el = document.getElementById('hoverTip');
+    hoverOverlay = new ol.Overlay({ element: el, offset:[12,12], positioning:'bottom-left', stopEvent:false });
+    vmap.addOverlay(hoverOverlay);
+
+    // 포인터 이동 시 툴팁
+    vmap.on('pointermove', (evt) => {
+      const pixel = vmap.getEventPixel(evt.originalEvent);
+      let feature = null;
+      // 클러스터 해제하여 단일 피처만 취득
+      vmap.forEachFeatureAtPixel(pixel, (f, layer) => {
+        if (layer === clusterLayer || layer === vectorLayer || layer === geojsonLayer) {
+          if (f.get('features')) { // 클러스터
+            const arr = f.get('features');
+            if (arr.length === 1) feature = arr[0];
+          } else {
+            feature = f;
+          }
+        }
+      });
+
+      if (feature) {
+        const coord = evt.coordinate;
+        const html = buildTooltipHTML(feature);
+        if (html) {
+          el.innerHTML = html;
+          el.style.display = 'block';
+          hoverOverlay.setPosition(coord);
+        }
+      } else {
+        el.style.display = 'none';
+      }
+    });
+
+    // 지도 클릭 시 마커 추가 기능 (새로 추가된 기능)
+    vmap.on('singleclick', (evt) => {
+        if (manualMarkerEnabled) {
+          const coords = ol.proj.transform(evt.coordinate, EPSG3857, EPSG4326);
+          const lon = coords[0];
+          const lat = coords[1];
+          addMarkerLonLat(lon, lat, {
+            title: '새 마커',
+            category: '수동 추가',
+            info: {
+              '위도': lat.toFixed(5),
+              '경도': lon.toFixed(5)
+            }
+          });
+          alert('새 마커가 추가되었습니다.');
+        }
+      });
+  }
+
+  function setBasemap(mode) {
+    const t = vw.ol3.BasemapType[mode];
+    if (t) vmap.setBasemapType(t);
+  }
+
+  function goHome() { moveToLonLat(126.9784, 37.5667, 11); }
+
+  function moveToLonLat(lon, lat, zoom=14) {
+    const xy = ol.proj.transform([lon, lat], EPSG4326, EPSG3857);
+    vmap.getView().setCenter(xy);
+    vmap.getView().setZoom(zoom);
+  }
+
+  // ===== 주소 검색/지오코딩 (HTTPS + JSONP 폴백) =====
+  async function geocodeSearch() {
+    const q = document.getElementById('addrInput').value.trim();
+    if (!q) return;
+    const box = document.getElementById('addrResults');
+    box.innerHTML = '<div class="muted">검색 중…</div>';
+    try {
+      const data = await geocodeAPI(q);
+      const results = normalizeGeocodeResults(data);
+      renderAddrResults(q, results);
+    } catch (e) {
+      console.error(e);
+      box.innerHTML = `<div class="muted">오류: ${escapeHtml(e.message || '검색 실패')}</div>`;
+    // API Key 관련 경고창 제거
+    }
+  }
+
+  async function geocodeAndAdd(address, props) {
+    try {
+      const data = await geocodeAPI(address);
+      const results = normalizeGeocodeResults(data);
+      const r = results[0];
+      if (r) addMarkerLonLat(parseFloat(r.point.x), parseFloat(r.point.y), props);
+    } catch (e) { console.warn('지오코딩 실패:', address, e); }
+  }
+
+  async function geocodeAPI(address) {
+    ensureKey();
+    const base = `${VWORLD_ADDRESS_API}?service=address&request=getcoord&format=json&crs=epsg:4326&type=road&address=${encodeURIComponent(address)}&key=${encodeURIComponent(currentApiKey)}`;
+    try {
+      const res = await fetch(base, { method:'GET', mode:'cors', cache:'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      return await jsonp(base, 'callback');
+    }
+  }
+
+  function normalizeGeocodeResults(data) {
+    const r = data && data.response;
+    if (!r) return [];
+    if (Array.isArray(r.result)) return r.result;
+    if (r.result) return [r.result];
+    return [];
+  }
+
+  function renderAddrResults(query, results) {
+    const box = document.getElementById('addrResults');
+    box.innerHTML = '';
+    if (!results || results.length === 0) {
+      box.innerHTML = `<div class="muted">검색 결과 없음: ${escapeHtml(query)}</div>`;
+      return;
+    }
+    results.slice(0, 20).forEach(r => {
+      const text = r?.text || r?.structure?.level4L || query;
+      const x = parseFloat(r?.point?.x);
+      const y = parseFloat(r?.point?.y);
+      if (isFinite(x) && isFinite(y)) {
+        const row = document.createElement('div');
+        row.textContent = `${text} (${x.toFixed(5)}, ${y.toFixed(5)})`;
+        row.onclick = () => { addMarkerLonLat(x, y, { title: text, category:'주소검색' }); moveToLonLat(x, y, 16); };
+        
+        box.appendChild(row);
+      }
+    });
+  }
+
+  // ===== 장소 검색(주변) =====
+  function quickPOI(keyword){ document.getElementById('poiKeyword').value = keyword; searchPOI(); }
+
+  async function searchPOI(){
+    const keyword = document.getElementById('poiKeyword').value.trim() || '주차장';
+    const radius  = parseInt(document.getElementById('poiRadius').value, 10) || 1000;
+    // 지도 중심 좌표
+    const center3857 = vmap.getView().getCenter();
+    const [lon,lat]  = ol.proj.transform(center3857, EPSG3857, EPSG4326);
+
+    const bbox = bboxFromCenter(lon, lat, radius);
+    const size = 100; // 최대 100건 요청
+
+    const url = `${VWORLD_SEARCH_API}?service=search&request=search&format=json&type=place&size=${size}&page=1&key=${encodeURIComponent(currentApiKey)}&query=${encodeURIComponent(keyword)}&bbox=${bbox.join(',')}`;
+
+    const box = document.getElementById('poiResults');
+    box.innerHTML = '<div class="muted">주변 장소를 검색 중…</div>';
+
+    try {
+      ensureKey();
+      let data;
+      try {
+        const res = await fetch(url, { method:'GET', mode:'cors', cache:'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+      } catch (e) {
+        data = await jsonp(url, 'callback');
+      }
+
+      const list = normalizePoiResults(data);
+      // 혹시 bbox가 미적용되면 반경 필터를 한 번 더 적용
+      const filtered = list.filter(p => distanceMeters(lon, lat, p.x, p.y) <= radius);
+      renderPoiResults(filtered, {lon,lat,keyword});
+    } catch (err) {
+      console.error(err);
+      box.innerHTML = `<div class="muted">오류: ${escapeHtml(err.message || '장소 검색 실패')}</div>`;
+    }
+  }
+
+  function normalizePoiResults(data){
+    const r = data && data.response;
+    if (!r || !r.result || !r.result.items) return [];
+    const items = Array.isArray(r.result.items) ? r.result.items : [r.result.items];
+    return items.map(it => ({
+      title: it.title || it.place || it.address || it.id || '장소',
+      category: it.category || it.typename || '장소검색',
+      x: parseFloat(it.point && it.point.x),
+      y: parseFloat(it.point && it.point.y),
+      address: it.address || it.road_addr || '',
+      tel: it.tel || it.phone || ''
+    })).filter(p => isFinite(p.x) && isFinite(p.y));
+  }
+
+  function renderPoiResults(list, ctx){
+    const box = document.getElementById('poiResults');
+    box.innerHTML = '';
+    if (list.length === 0){ box.innerHTML = '<div class="muted">주변 결과가 없습니다.</div>'; return; }
+
+    list.slice(0, 100).forEach(p => {
+      const row = document.createElement('div');
+      row.textContent = `${p.title} · ${p.address || ''}`;
+      row.onclick = () => {
+        addMarkerLonLat(p.x, p.y, { title: p.title, category: `장소검색:${ctx.keyword}`, info: { '주소': p.address, '전화': p.tel, '분류': p.category } });
+        moveToLonLat(p.x, p.y, 17);
+      };
+      box.appendChild(row);
+    });
+  }
+
+  // ===== 마커/클러스터 =====
+  function addMarkerLonLat(lon, lat, props={}) {
+    const feature = new ol.Feature({ geometry: new ol.geom.Point(ol.proj.transform([lon, lat], EPSG4326, EPSG3857)) });
+    // 표준 속성
+    if (props.title) feature.set('title', props.title);
+    if (props.category) feature.set('category', props.category);
+    // 추가 정보(엑셀 등)
+    if (props.info && typeof props.info === 'object') feature.set('info', props.info);
+    // 컬럼 순서
+    if (props.info_order && Array.isArray(props.info_order)) feature.set('info_order', props.info_order);
+
+    feature.setStyle(pointStyle(feature.get('category')));
+    vectorSource.addFeature(feature);
+    refreshStats();
+  }
+
+  function pointStyle(category = '기타') {
+    let style;
+    if (category === 'CCTV') {
+    const svg = `<svg width="800px" height="800px" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="21" r="16" fill="#2F88FF" stroke="#000000" stroke-width="4"/><circle cx="24" cy="21" r="7" fill="#43CCF8" stroke="white" stroke-width="4"/><path d="M16 43L32 43" stroke="#000000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 37V43" stroke="#000000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    return new ol.style.Style({
+      image: new ol.style.Icon({
+        anchor: [0.5, 0.9],
+        src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg),
+        scale: 0.05
+      })
+    });
+    }else {
+        let color = '#999999';
+        if (category === '주소검색') {
+            color = '#22d3ee';
+        } else if (category?.trim().toLowerCase() === '업로드') {
+            color = '#84cc16';
+        } else if (category.startsWith('장소검색')) {
+            color = '#f43f5e';
+        }
+        style = new ol.style.Style({
+            image: new ol.style.Circle({
+                radius: 7,
+                fill: new ol.style.Fill({ color }),
+                stroke: new ol.style.Stroke({ color: '#0b1220', width: 2 })
+            })
+          
+        });
+    }
+    return style;
+  }
+
+
+  function clusterStyleFn(feature) {
+    const size = feature.get('features').length;
+    if (size === 1) return feature.get('features')[0].getStyle();
+    const radius = Math.max(12, Math.min(24, 8 + Math.log(size) * 6));
+    return new ol.style.Style({
+      image: new ol.style.Circle({ radius, fill: new ol.style.Fill({ color:'#2563eb' }), stroke: new ol.style.Stroke({ color:'#0b1220', width:2 }) }),
+      text: new ol.style.Text({ text: String(size), fill: new ol.style.Fill({ color:'#fff' }), stroke: new ol.style.Stroke({ color:'#0b1220', width:3 }) })
+    });
+  }
+
+  function toggleCluster() {
+    useCluster = !useCluster;
+    document.getElementById('clusterBtn').textContent = '클러스터: ' + (useCluster ? '꺼짐' : '켜짐');
+    // 기존 레이어 제거
+    vmap.removeLayer(clusterLayer);
+    vmap.removeLayer(vectorLayer);
+
+    if (useCluster) {
+      vmap.addLayer(clusterLayer);
+    } else {
+      vmap.addLayer(vectorLayer);
+    }
+  }
+
+
+  function clearAllMarkers() {
+    vectorSource.clear(); 
+    geojsonSource.clear();
+    refreshStats();
+  }
+
+  function clearMarkersByCategory(category) {
+    const featuresToRemove = vectorSource.getFeatures().filter(f => f.get('category').startsWith(category));
+    featuresToRemove.forEach(f => vectorSource.removeFeature(f));
+    refreshStats();
+  }
+  
+  function clearGeoJSON() {
+    geojsonSource.clear();
+    refreshStats();
+  }
+
+  // Hover 툴팁 HTML
+  function buildTooltipHTML(f){
+    const title = f.get('title');
+    const category = f.get('category');
+    const info = f.get('info') || {};
+    const info_order = f.get('info_order');
+    let rows = [];
+    
+    // 'info_order' 배열이 있으면 해당 순서대로 키-값 쌍을 추출
+    if (info_order) {
+      for (const key of info_order) {
+        if (info.hasOwnProperty(key)) {
+          rows.push([key, info[key]]);
+        }
+      }
+    } else {
+      // 'info_order' 배열이 없으면 기존처럼 객체 순서대로 추출
+      rows = Object.entries(info);
+    }
+
+    // geometry 키를 가진 항목 제외
+    rows = rows.filter(([k, v]) => k !== 'geometry' && v !== '' && v != null);
+    
+    if (!title && rows.length === 0) return '';
+
+    let html = '';
+    if (title) html += `<b>${escapeHtml(title)}</b>`;
+    if (category) html += ` <small class="muted">(${escapeHtml(category)})</small>`;
+    if (rows.length){
+      html += '<div class="kv">';
+      for (const [k,v] of rows){
+        html += `<div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(String(v))}</div>`;
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
+  // ===== 통계/차트 =====
+  function initChart() {
+    const ctx = document.getElementById('statsChart');
+    chart = new Chart(ctx, { type: 'bar', data: { labels: [], datasets: [{ label: '카테고리별 건수', data: [] }] }, options: { responsive: true, plugins: { legend: { display:false } }, scales: { y: { beginAtZero:true } } } });
+  }
+
+  function refreshStats() {
+    const counts = {};
+    const allFeatures = [...vectorSource.getFeatures(), ...geojsonSource.getFeatures()];
+    allFeatures.forEach(f => {
+      const cat = f.get('category') || '기타';
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+    const labels = Object.keys(counts);
+    const data = labels.map(k => counts[k]);
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = data;
+    chart.update();
+  }
+
+  function downloadCSV() {
+    const rows = [['title','category','lon','lat']];
+    vectorSource.getFeatures().forEach(f => {
+      const geom = f.getGeometry();
+      const [x,y] = ol.proj.transform(geom.getCoordinates(), EPSG3857, EPSG4326);
+      rows.push([f.get('title')||'', f.get('category')||'', x, y]);
+    });
+    const csv = rows.map(r => r.map(v => '"'+String(v).replaceAll('"','""')+'"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'markers.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ===== 파일 업로드 =====
+  function wireFileInput() {
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const wb = await file.arrayBuffer().then(buf => XLSX.read(buf, { type:'array' }));
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, { defval:'' });
+      const cols = Object.keys(json[0] || {});
+      fillSelect('latField', cols, guessLat(cols));
+      fillSelect('lonField', cols, guessLon(cols));
+      fillSelect('titleField', cols, guessTitle(cols));
+      fillSelect('categoryField', cols, guessCategory(cols));
+      window.__UPLOAD_ROWS__ = json;
+      window.__UPLOAD_COLS_ORDER__ = cols; // 컬럼 순서 저장
+    });
+  }
+
+  function fillSelect(id, items, selected) {
+    const el = document.getElementById(id);
+    el.innerHTML = '';
+    items.forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = k;
+      if (k === selected) opt.selected = true;
+      el.appendChild(opt);
+    });
+  }
+
+  function loadFile() {
+    const rows = window.__UPLOAD_ROWS__ || [];
+    if (rows.length === 0) {
+      alert('먼저 파일을 선택하세요.');
+      return;
+    }
+    const latKey = document.getElementById('latField').value;
+    const lonKey = document.getElementById('lonField').value;
+    const titleKey = document.getElementById('titleField').value;
+    const catKey = document.getElementById('categoryField').value;
+
+    const hasLatLon = latKey && lonKey;
+    let geocoded = 0;
+    const colsOrder = window.__UPLOAD_COLS_ORDER__;
+
+    for (let i=0; i<rows.length; i++) {
+      const r = rows[i];
+      const title = r[titleKey] || '항목';
+      const category = r[catKey] || '업로드';
+
+      if (hasLatLon && isFinite(r[latKey]) && isFinite(r[lonKey])) {
+        const info = {};
+        for (const k of colsOrder) { info[k] = r[k]; }
+        addMarkerLonLat(r[lonKey], r[latKey], { title, category, info, info_order: colsOrder });
+      } else if (title) {
+        if (geocoded < 50) {
+          geocodeAndAdd(title, { title, category, info: { '주소': title } });
+          geocoded++;
+        }
+      }
+    }
+    refreshStats();
+    if (geocoded > 0) alert(`✅ 성공: ${rows.length}개 항목 중 ${geocoded}개를 지오코딩하여 마커를 추가했습니다.`);
+    else alert(`✅ 성공: ${vectorSource.getFeatures().length}개의 마커를 추가했습니다.`);
+  }
+
+  // GeoJSON 토글 기능 추가
+  function toggleEmbeddedGeoJSON() {
+    if (geojsonSource.getFeatures().length > 0) {
+      // GeoJSON이 이미 로드되어 있으면 초기화
+      geojsonSource.clear();
+      refreshStats();
+      alert('탄력운영구간을 초기화했습니다.');
+    } else {
+      // GeoJSON이 없으면 로드
+      loadEmbeddedGeoJSON();
+    }
+  }
+
+  function loadEmbeddedGeoJSON() {
+    let features;
+    try {
+      features = new ol.format.GeoJSON().readFeatures(embeddedGeoJSON, {
+        featureProjection: 'EPSG:3857',
+        dataProjection: 'EPSG:4326'
+      });
+    } catch (error) {
+      console.error("GeoJSON 피처 읽기 오류:", error);
+      alert(`❌ 오류: 내재화된 GeoJSON 파일을 읽는 데 실패했습니다. 파일 형식을 확인해주세요.\n\n오류 상세: ${error.message}`);
+      return;
+    }
+
+    const validFeatures = features.filter(f => f && typeof f.getGeometry === 'function' && f.getGeometry() !== null);
+    if (validFeatures.length === 0) {
+      alert(`⚠️ 경고: 내재화된 GeoJSON 파일에서 로드할 유효한 지오메트리가 없습니다. GeoJSON 파일에 점, 선, 면 정보가 포함되어 있는지 확인하세요.`);
+      return;
+    }
+
+    validFeatures.forEach(feature => {
+      feature.set('info', feature.getProperties());
+      feature.set('category', '탄력운영구간'); // 카테고리 설정
+      const geometryType = feature.getGeometry().getType();
+      let style;
+      if (geometryType === 'LineString' || geometryType === 'MultiLineString') {
+        style = new ol.style.Style({
+          stroke: new ol.style.Stroke({ color: '#f44336', width: 4 })
+        });
+      } else if (geometryType === 'Polygon' || geometryType === 'MultiPolygon') {
+        style = new ol.style.Style({
+          fill: new ol.style.Fill({ color: 'rgba(234, 179, 8, 0.4)' }),
+          stroke: new ol.style.Stroke({ color: '#008080', width: 2 })
+        });
+      } else { // Point, MultiPoint 등
+        style = new ol.style.Style({
+          image: new ol.style.Circle({
+            radius: 7,
+            fill: new ol.style.Fill({ color: '#eab308' }),
+            stroke: new ol.style.Stroke({ color: '#0b1220', width: 2 })
+          })
+        });
+      }
+      feature.setStyle(style);
+    });
+
+    geojsonSource.addFeatures(validFeatures);
+    refreshStats();
+    alert(`✅ 성공: 내재화된 GeoJSON 파일에서 ${validFeatures.length}개의 지오메트리를 로드했습니다.`);
+  }
+
+  // 마커 찾기 기능
+  function searchMarker() {
+    const q = document.getElementById('markerSearchInput').value.trim().toLowerCase();
+    const box = document.getElementById('markerSearchResults');
+    box.innerHTML = '';
+    const allFeatures = [...vectorSource.getFeatures(), ...geojsonSource.getFeatures()];
+    const results = allFeatures.filter(f => {
+        const title = f.get('title');
+        return title && title.toLowerCase().includes(q);
+    });
+    
+    if (results.length === 0) {
+      box.innerHTML = `<div class="muted">검색 결과 없음: ${escapeHtml(q)}</div>`;
+      return;
+    }
+
+    results.forEach(f => {
+      const title = f.get('title');
+      const category = f.get('category');
+      const geom = f.getGeometry();
+      const coords = geom.getType().includes('Point') ? ol.proj.transform(geom.getCoordinates(), EPSG3857, EPSG4326) : null;
+      const row = document.createElement('div');
+      row.textContent = `${title} (${category})`;
+      
+      row.onclick = () => {
+        if (coords) {
+          moveToLonLat(coords[0], coords[1], 17); // 지도 이동/확대
+        } else {
+          // 폴리곤/라인의 경우 범위에 맞게 이동
+          const extent = f.getGeometry().getExtent();
+          vmap.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 500 });
+        }
+        // 선택된 마커 강조 효과를 원하면 style 일시 변경 가능
+        f.setStyle(new ol.style.Style({
+        image: new ol.style.Circle({
+            radius: 9,
+            fill: new ol.style.Fill({color:'#f43f5e'}),
+            stroke: new ol.style.Stroke({color:'#fff',width:3})
+          })
+        }));
+      };
+      box.appendChild(row);
+    });
+  }
+
+  // 마커 수동 추가 기능 (새로 추가)
+  function toggleManualMarker() {
+      manualMarkerEnabled = !manualMarkerEnabled;
+      const btn = document.querySelector('button[onclick="toggleManualMarker()"]');
+      btn.textContent = '마커 수동 추가: ' + (manualMarkerEnabled ? '켜짐' : '꺼짐');
+      if (manualMarkerEnabled) {
+        vmap.set('cursor', 'crosshair');
+        alert('마커 수동 추가 모드가 활성화되었습니다. 지도에 클릭하여 마커를 추가하세요.');
+      } else {
+        vmap.set('cursor', 'auto');
+        alert('마커 수동 추가 모드가 비활성화되었습니다.');
+      }
+    }
+
+function addCCTVMarkers() {
+    const cctvData = [
+   {
+        "CCTV명": "진접읍 더샵퍼스트시티108동 주변",
+        "설치일자": "2022-04-01",
+        "위도": 37.7365528,
+        "경도": 127.200105,
+        "관리번호": 22001,
+        "설치주소": "진접읍 부평리 769"
+    },
+    {
+        "CCTV명": "진접읍 더샵퍼스트시티110동 주변",
+        "설치일자": "2022-04-01",
+        "위도": 37.7357465,
+        "경도": 127.2001761,
+        "관리번호": 22002,
+        "설치주소": "진접읍 부평리 637-14"
+    },
+    {
+        "CCTV명": "진접읍 더샵퍼스트시티 정문 주변",
+        "설치일자": "2022-04-01",
+        "위도": 37.7357072,
+        "경도": 127.1992309,
+        "관리번호": 22003,
+        "설치주소": "진접읍 부평리 656-1"
+    },
+    {
+        "CCTV명": "진접읍 더샵퍼스트시티107동 주변",
+        "설치일자": "2022-04-01",
+        "위도": 37.7367621,
+        "경도": 127.1974622,
+        "관리번호": 22004,
+        "설치주소": "진접읍 부평리 637-14"
+    },
+    {
+        "CCTV명": "진접읍 서희스타힐스101동 주변",
+        "설치일자": "2022-04-01",
+        "위도": 37.7356852,
+        "경도": 127.1976987,
+        "관리번호": 22005,
+        "설치주소": "진접읍 부평리 731-7"
+    },
+    {
+        "CCTV명": "진접읍 서희스타힐스105동 주변",
+        "설치일자": "2022-04-01",
+        "위도": 37.7345666,
+        "경도": 127.1978432,
+        "관리번호": 22006,
+        "설치주소": "진접읍 부평리 733-6"
+    },
+    {
+        "CCTV명": "별내동 별가람역사거리 주변",
+        "설치일자": "2022-09-01",
+        "위도": 37.667734,
+        "경도": 127.116277,
+        "관리번호": 22007,
+        "설치주소": "별내동 836"
+    },
+    {
+        "CCTV명": "별내동 다우프라자 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.667016,
+        "경도": 127.116785,
+        "관리번호": 22008,
+        "설치주소": "별내동 842"
+    },
+    {
+        "CCTV명": "별내동 별내아이파크2차 정문 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.6651351,
+        "경도": 127.1157016,
+        "관리번호": 22009,
+        "설치주소": "별내동 851"
+    },
+    {
+        "CCTV명": "별내동 별가람유치원 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.665516,
+        "경도": 127.117963,
+        "관리번호": 22010,
+        "설치주소": "별내동 857"
+    },
+    {
+        "CCTV명": "별내동 샛별초교 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.666211,
+        "경도": 127.129855,
+        "관리번호": 22011,
+        "설치주소": "별내동 869-3"
+    },
+    {
+        "CCTV명": "별내동 별가람중학교 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.659175,
+        "경도": 127.121591,
+        "관리번호": 22012,
+        "설치주소": "별내동 912"
+    },
+    {
+        "CCTV명": "별내동 4호체육공원 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.6593027,
+        "경도": 127.1247034,
+        "관리번호": 22013,
+        "설치주소": "별내동 907"
+    },
+    {
+        "CCTV명": "별내동 화성프라자 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.658692,
+        "경도": 127.124931,
+        "관리번호": 22014,
+        "설치주소": "별내동 826-5"
+    },
+    {
+        "CCTV명": "별내동 노블레스빌딩 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.643528,
+        "경도": 127.121321,
+        "관리번호": 22015,
+        "설치주소": "별내동 998"
+    },
+    {
+        "CCTV명": "별내동 KCC스위첸 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.6556299,
+        "경도": 127.1173076,
+        "관리번호": 22016,
+        "설치주소": "별내동 1072"
+    },
+    {
+        "CCTV명": "별내동 화접초교 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.652715,
+        "경도": 127.115295,
+        "관리번호": 22017,
+        "설치주소": "별내동 1077"
+    },
+    {
+        "CCTV명": "별내동 별빛마을3단지 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.651079,
+        "경도": 127.115356,
+        "관리번호": 22018,
+        "설치주소": "별내동 1096-12"
+    },
+    {
+        "CCTV명": "별내동 신안인스빌 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.649949,
+        "경도": 127.112401,
+        "관리번호": 22019,
+        "설치주소": "별내동 1047-2"
+    },
+    {
+        "CCTV명": "별내동 마들프라자 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.649392,
+        "경도": 127.113619,
+        "관리번호": 22020,
+        "설치주소": "별내동 1097-7"
+    },
+    {
+        "CCTV명": "별내동 별빛도서관 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.65023,
+        "경도": 127.120355,
+        "관리번호": 22021,
+        "설치주소": "별내동 1058"
+    },
+    {
+        "CCTV명": "별내동 한별중학교 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.648751,
+        "경도": 127.118231,
+        "관리번호": 22022,
+        "설치주소": "별내동 1054"
+    },
+    {
+        "CCTV명": "별내동 동익미라벨아파트 사거리 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.648311,
+        "경도": 127.123415,
+        "관리번호": 22023,
+        "설치주소": "별내동 1031"
+    },
+    {
+        "CCTV명": "별내동 한별초교 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.646729,
+        "경도": 127.114779,
+        "관리번호": 22024,
+        "설치주소": "별내동 1038"
+    },
+    {
+        "CCTV명": "별내동 쌍용예가 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.646655,
+        "경도": 127.121127,
+        "관리번호": 22025,
+        "설치주소": "별내동 1026"
+    },
+    {
+        "CCTV명": "별내동 센타프라자 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.64655,
+        "경도": 127.12429,
+        "관리번호": 22026,
+        "설치주소": "별내동 1017"
+    },
+    {
+        "CCTV명": "별내동 한화꿈에그린 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.645254,
+        "경도": 127.113163,
+        "관리번호": 22027,
+        "설치주소": "별내동 1042"
+    },
+    {
+        "CCTV명": "별내동 삼육대학교 후문 주변",
+        "설치일자": "2017-06-01",
+        "위도": 37.644421,
+        "경도": 127.110539,
+        "관리번호": 22033,
+        "설치주소": "별내동 558-151"
+    },
+    {
+        "CCTV명": "진건읍 진건주공1단지 주변",
+        "설치일자": "2017-10-01",
+        "위도": 37.6557387,
+        "경도": 127.1812347,
+        "관리번호": 22034,
+        "설치주소": "진건읍 사능리 625"
+    },
+    {
+        "CCTV명": "화도읍 창현생태유치원 주변",
+        "설치일자": "2017-10-01",
+        "위도": 37.645649,
+        "경도": 127.298681,
+        "관리번호": 22035,
+        "설치주소": "화도읍 창현리 773"
+    },
+    {
+        "CCTV명": "진접읍 부평초등학교 주변",
+        "설치일자": "2021-05-01",
+        "위도": 37.7379556,
+        "경도": 127.2003661,
+        "관리번호": 22036,
+        "설치주소": "진접읍 부평리 767-7"
+    },
+    {
+        "CCTV명": "화도읍 도서관삼거리 주변",
+        "설치일자": "2021-05-01",
+        "위도": 37.65002,
+        "경도": 127.306135,
+        "관리번호": 22037,
+        "설치주소": "화도읍 창현리 751"
+    },
+    {
+        "CCTV명": "화도읍 창현초등학교 주변",
+        "설치일자": "2021-05-01",
+        "위도": 37.644785,
+        "경도": 127.301299,
+        "관리번호": 22038,
+        "설치주소": "화도읍 창련리 761"
+    },
+    {
+        "CCTV명": "퇴계원읍 도제원초등학교 주변",
+        "설치일자": "2021-05-01",
+        "위도": 37.646447,
+        "경도": 127.145914,
+        "관리번호": 22039,
+        "설치주소": "퇴계원리 370-2"
+    },
+    {
+        "CCTV명": "평내동 신촌초등학교 주변",
+        "설치일자": "2021-05-01",
+        "위도": 37.645711,
+        "경도": 127.2393,
+        "관리번호": 22040,
+        "설치주소": "평내동 644"
+    },
+    {
+        "CCTV명": "다산1동 다산시립어린이집 주변",
+        "설치일자": "2021-05-01",
+        "위도": 37.6131335,
+        "경도": 127.1552474,
+        "관리번호": 22041,
+        "설치주소": "다산동 6275"
+    },
+    {
+        "CCTV명": "다산1동 솔보프라자 주변",
+        "설치일자": "2021-05-01",
+        "위도": 37.623385,
+        "경도": 127.1536465,
+        "관리번호": 22042,
+        "설치주소": "다산동 6261"
+    },
+    {
+        "CCTV명": "다산2동 가운리슈빌 오피스텔 주변",
+        "설치일자": "2021-07-01",
+        "위도": 37.6048976,
+        "경도": 127.1548133,
+        "관리번호": 22043,
+        "설치주소": "다산동 704"
+    },
+    {
+        "CCTV명": "화도읍 심석초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.657724,
+        "경도": 127.306222,
+        "관리번호": 22044,
+        "설치주소": "화도읍 마석우리 산73-1"
+    },
+    {
+        "CCTV명": "화도읍 답내초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.661619,
+        "경도": 127.347021,
+        "관리번호": 22045,
+        "설치주소": "화도읍 답내리 268-4"
+    },
+    {
+        "CCTV명": "금곡동 동곡초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.628367,
+        "경도": 127.203227,
+        "관리번호": 22046,
+        "설치주소": "금곡동 671"
+    },
+    {
+        "CCTV명": "금곡동 금곡초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.634793,
+        "경도": 127.21042,
+        "관리번호": 22047,
+        "설치주소": "금곡동 159-7"
+    },
+    {
+        "CCTV명": "다산2동 양정초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.6083317,
+        "경도": 127.1657429,
+        "관리번호": 22048,
+        "설치주소": "다산동 3720-5"
+    },
+    {
+        "CCTV명": "다산1동 도농초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.611495,
+        "경도": 127.157416,
+        "관리번호": 22049,
+        "설치주소": "다산동 4002-1"
+    },
+    {
+        "CCTV명": "별내동 별가람초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.654834,
+        "경도": 127.124767,
+        "관리번호": 22050,
+        "설치주소": "별내동 924"
+    },
+    {
+        "CCTV명": "오남읍 양오초등학교 주변",
+        "설치일자": "2021-12-01",
+        "위도": 37.697967,
+        "경도": 127.192856,
+        "관리번호": 22051,
+        "설치주소": "오남읍 양지리 512-38"
+    },
+    {
+        "CCTV명": "조안면 운길산역 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.5539955,
+        "경도": 127.3107404,
+        "관리번호": 22052,
+        "설치주소": "조안면 진중리 268-16"
+    },
+    {
+        "CCTV명": "호평동 이마트 사거리 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.655968,
+        "경도": 127.243782,
+        "관리번호": 22053,
+        "설치주소": "호평동 639"
+    },
+    {
+        "CCTV명": "호평동 꿈에그린아파트 사거리 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.658336,
+        "경도": 127.249147,
+        "관리번호": 22054,
+        "설치주소": "호평동 721"
+    },
+    {
+        "CCTV명": "별내동 우미린아파트 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.643868,
+        "경도": 127.117194,
+        "관리번호": 22055,
+        "설치주소": "별내동 1036"
+    },
+    {
+        "CCTV명": "별내동 동익미라벨아파트39단지 정문 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.649334,
+        "경도": 127.121352,
+        "관리번호": 22056,
+        "설치주소": "별내동 1059"
+    },
+    {
+        "CCTV명": "퇴계원읍 퇴계원초등학교 주변1",
+        "설치일자": "2018-06-01",
+        "위도": 37.6523652,
+        "경도": 127.1418347,
+        "관리번호": 22057,
+        "설치주소": "퇴계원리 275"
+    },
+    {
+        "CCTV명": "평내동 국민건강보험공단 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.646636,
+        "경도": 127.234388,
+        "관리번호": 22058,
+        "설치주소": "평내동 246-20"
+    },
+    {
+        "CCTV명": "호평동 주평강교회 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.655703,
+        "경도": 127.239761,
+        "관리번호": 22059,
+        "설치주소": "호평동 692"
+    },
+    {
+        "CCTV명": "호평동 롯데슈퍼 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.661676,
+        "경도": 127.248464,
+        "관리번호": 22060,
+        "설치주소": "호평동 688"
+    },
+    {
+        "CCTV명": "화도읍 신명아파트 삼거리 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.657018,
+        "경도": 127.301585,
+        "관리번호": 22061,
+        "설치주소": "화도읍 비룡로 56-8"
+    },
+    {
+        "CCTV명": "화도읍 마석중학교 삼거리 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.647544,
+        "경도": 127.304277,
+        "관리번호": 22062,
+        "설치주소": "화도읍 창현리 749"
+    },
+    {
+        "CCTV명": "진접읍 광릉중학교 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.743752,
+        "경도": 127.2137179,
+        "관리번호": 22063,
+        "설치주소": "진접읍 진벌로 78-23"
+    },
+    {
+        "CCTV명": "진접읍 장승초등학교 앞 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.7308434,
+        "경도": 127.1951248,
+        "관리번호": 22064,
+        "설치주소": "진접읍 금강로 1576번길 12"
+    },
+    {
+        "CCTV명": "별내동 에스지타워 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.666036,
+        "경도": 127.118052,
+        "관리번호": 22065,
+        "설치주소": "별내동 826-12"
+    },
+    {
+        "CCTV명": "별내동 기아오토큐 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.667453,
+        "경도": 127.117291,
+        "관리번호": 22066,
+        "설치주소": "별내동 826-12"
+    },
+    {
+        "CCTV명": "다산1동 자이아이비플레이스몰 주변",
+        "설치일자": "2022-09-01",
+        "위도": 37.6261098,
+        "경도": 127.1522229,
+        "관리번호": 22067,
+        "설치주소": "다산동 6260-3"
+    },
+    {
+        "CCTV명": "화도읍 농협 본점 주변",
+        "설치일자": "2015-03-01",
+        "위도": 37.65224,
+        "경도": 127.307968,
+        "관리번호": 22068,
+        "설치주소": "화도읍 마석우리 292-6"
+    },
+    {
+        "CCTV명": "화도읍 김약국 주변",
+        "설치일자": "2009-05-01",
+        "위도": 37.652533,
+        "경도": 127.306495,
+        "관리번호": 22069,
+        "설치주소": "화도읍 창현리 488-30"
+    },
+    {
+        "CCTV명": "화도읍 중흥아파트 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.65794,
+        "경도": 127.301987,
+        "관리번호": 22070,
+        "설치주소": "화도읍 마석우리 583"
+    },
+    {
+        "CCTV명": "와부읍 덕소역 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.587589,
+        "경도": 127.208576,
+        "관리번호": 22071,
+        "설치주소": "와부읍 덕소리 600-60"
+    },
+    {
+        "CCTV명": "와부읍 메가트리움 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.5870913,
+        "경도": 127.2104494,
+        "관리번호": 22072,
+        "설치주소": "와부읍 덕소리 462-83"
+    },
+    {
+        "CCTV명": "와부읍 다봄안경 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.5859856,
+        "경도": 127.2121307,
+        "관리번호": 22073,
+        "설치주소": "와부읍 덕소리 473-2"
+    },
+    {
+        "CCTV명": "와부읍 래일스타 상가 주변",
+        "설치일자": "2009-05-01",
+        "위도": 37.584708,
+        "경도": 127.210489,
+        "관리번호": 22074,
+        "설치주소": "와부읍 덕소리 517-1"
+    },
+    {
+        "CCTV명": "와부읍 도심역 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.579356,
+        "경도": 127.222142,
+        "관리번호": 22075,
+        "설치주소": "와부읍 도곡리 1026-7"
+    },
+    {
+        "CCTV명": "와부읍 한솔아파트 주변",
+        "설치일자": "2018-03-01",
+        "위도": 37.582474,
+        "경도": 127.210726,
+        "관리번호": 22076,
+        "설치주소": "와부읍 덕소리 527-7"
+    },
+    {
+        "CCTV명": "진접읍 대명상가 주변",
+        "설치일자": "2007-04-01",
+        "위도": 37.717613,
+        "경도": 127.181517,
+        "관리번호": 22077,
+        "설치주소": "진접읍 장현리 637"
+    },
+    {
+        "CCTV명": "진접읍 주공아파트 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.715738,
+        "경도": 127.182043,
+        "관리번호": 22078,
+        "설치주소": "진접읍 장현리 670"
+    },
+    {
+        "CCTV명": "진접읍 슈랜드 주변",
+        "설치일자": "2009-05-01",
+        "위도": 37.744885,
+        "경도": 127.203027,
+        "관리번호": 22079,
+        "설치주소": "진접읍 팔야리 692-4"
+    },
+    {
+        "CCTV명": "진접읍 진접래일스타 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.7118759,
+        "경도": 127.1859755,
+        "관리번호": 22080,
+        "설치주소": "진접읍 연평리 60-14"
+    },
+    {
+        "CCTV명": "진접읍 우체국 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.713119,
+        "경도": 127.1873756,
+        "관리번호": 22081,
+        "설치주소": "진접읍 금곡리 1081"
+    },
+    {
+        "CCTV명": "진접읍 제일프라자 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.7205295,
+        "경도": 127.1959781,
+        "관리번호": 22082,
+        "설치주소": "진접읍 금곡리 973-4"
+    },
+    {
+        "CCTV명": "다산1동 미금초등학교 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.6098205,
+        "경도": 127.1554387,
+        "관리번호": 22083,
+        "설치주소": "다산동 4002-104"
+    },
+    {
+        "CCTV명": "진접읍 부영아파트 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.7146444,
+        "경도": 127.1983304,
+        "관리번호": 22084,
+        "설치주소": "진접읍 금곡리 1096"
+    },
+    {
+        "CCTV명": "진건읍 소방서 진입로 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.6606109,
+        "경도": 127.1788656,
+        "관리번호": 22085,
+        "설치주소": "진건읍 용정리 743-6"
+    },
+    {
+        "CCTV명": "진건읍 용정사거리 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.6562343,
+        "경도": 127.1789522,
+        "관리번호": 22086,
+        "설치주소": "진건읍 용정리 793-35"
+    },
+    {
+        "CCTV명": "호평동 시네마 주변",
+        "설치일자": "2007-04-01",
+        "위도": 37.654785,
+        "경도": 127.24383,
+        "관리번호": 22087,
+        "설치주소": "호평동 640-2"
+    },
+    {
+        "CCTV명": "호평동 두산위브 사거리 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.655916,
+        "경도": 127.242588,
+        "관리번호": 22088,
+        "설치주소": "호평동 622"
+    },
+    {
+        "CCTV명": "호평동 평내호평역앞 사거리 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.653967,
+        "경도": 127.243838,
+        "관리번호": 22089,
+        "설치주소": "호평동 641"
+    },
+    {
+        "CCTV명": "호평동 이마트 입구 주변",
+        "설치일자": "2007-04-01",
+        "위도": 37.654346,
+        "경도": 127.243637,
+        "관리번호": 22090,
+        "설치주소": "호평동 637"
+    },
+    {
+        "CCTV명": "호평동 부동산일번지 주변",
+        "설치일자": "2009-09-01",
+        "위도": 37.655836,
+        "경도": 127.244746,
+        "관리번호": 22091,
+        "설치주소": "호평동 639-1"
+    },
+    {
+        "CCTV명": "호평동 버스종점사거리 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.656226,
+        "경도": 127.247645,
+        "관리번호": 22092,
+        "설치주소": "호평동 675-2"
+    },
+    {
+        "CCTV명": "평내동 평내프라자 주변",
+        "설치일자": "2007-04-01",
+        "위도": 37.645701,
+        "경도": 127.235143,
+        "관리번호": 22093,
+        "설치주소": "평내동 578-2"
+    },
+    {
+        "CCTV명": "호평동 테마프라자 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.659645,
+        "경도": 127.247026,
+        "관리번호": 22094,
+        "설치주소": "호평동 617-3"
+    },
+    {
+        "CCTV명": "평내동 평내성당 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.645329,
+        "경도": 127.235482,
+        "관리번호": 22095,
+        "설치주소": "평내동 567"
+    },
+    {
+        "CCTV명": "평내동 대주아파트 주변",
+        "설치일자": "2009-06-01",
+        "위도": 37.645992,
+        "경도": 127.236499,
+        "관리번호": 22096,
+        "설치주소": "평내동 631"
+    },
+    {
+        "CCTV명": "평내동 남양주 우체국 주변",
+        "설치일자": "2009-09-01",
+        "위도": 37.649314,
+        "경도": 127.236523,
+        "관리번호": 22097,
+        "설치주소": "평내동 203-13"
+    },
+    {
+        "CCTV명": "화도읍 도뮤토아파트 주변",
+        "설치일자": "2019-12-01",
+        "위도": 37.647107,
+        "경도": 127.305078,
+        "관리번호": 22098,
+        "설치주소": "화도읍 창현리 778"
+    },
+    {
+        "CCTV명": "다산1동 금교초교사거리 주변",
+        "설치일자": "2009-05-01",
+        "위도": 37.6143686,
+        "경도": 127.1627679,
+        "관리번호": 22099,
+        "설치주소": "다산동 3410-3"
+    },
+    {
+        "CCTV명": "다산1동 빙그레 도농제2공장 주변",
+        "설치일자": "2018-03-01",
+        "위도": 37.6099238,
+        "경도": 127.1515766,
+        "관리번호": 22100,
+        "설치주소": "다산동 4311-7"
+    },
+    {
+        "CCTV명": "와부읍 덕소역2번출구 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.585976,
+        "경도": 127.208792,
+        "관리번호": 22101,
+        "설치주소": "와부읍 덕소리 590-8"
+    },
+    {
+        "CCTV명": "다산2동 (구)굴다리 주변",
+        "설치일자": "2010-05-01",
+        "위도": 37.6059252,
+        "경도": 127.1577846,
+        "관리번호": 22102,
+        "설치주소": "다산동 617-97"
+    },
+    {
+        "CCTV명": "다산2동 대성공구 주변",
+        "설치일자": "2018-03-01",
+        "위도": 37.6066712,
+        "경도": 127.1592157,
+        "관리번호": 22103,
+        "설치주소": "다산동 4089-1"
+    },
+    {
+        "CCTV명": "금곡동 좋은인상프라자 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.6349635,
+        "경도": 127.2077694,
+        "관리번호": 22104,
+        "설치주소": "금곡동 402-4"
+    },
+    {
+        "CCTV명": "금곡동 우체국 주변",
+        "설치일자": "2008-09-01",
+        "위도": 37.634855,
+        "경도": 127.207512,
+        "관리번호": 22105,
+        "설치주소": "금곡동 404-56"
+    },
+    {
+        "CCTV명": "화도읍 원병원 주변",
+        "설치일자": "2015-03-01",
+        "위도": 37.651891,
+        "경도": 127.30405,
+        "관리번호": 22106,
+        "설치주소": "화도읍 창현리 495-7"
+    },
+    {
+        "CCTV명": "평내동 대명아파트 주변",
+        "설치일자": "2013-04-01",
+        "위도": 37.650524,
+        "경도": 127.238353,
+        "관리번호": 22107,
+        "설치주소": "평내동 211-11"
+    },
+    {
+        "CCTV명": "화도읍 차산초등학교 진입로 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.636174,
+        "경도": 127.303176,
+        "관리번호": 22108,
+        "설치주소": "화도읍 차산리 79-9"
+    },
+    {
+        "CCTV명": "와부읍 두산위브아파트 주변",
+        "설치일자": "2015-03-01",
+        "위도": 37.579806,
+        "경도": 127.216685,
+        "관리번호": 22109,
+        "설치주소": "와부읍 도곡리 986-9"
+    },
+    {
+        "CCTV명": "다산1동 도농역 주변",
+        "설치일자": "2020-06-01",
+        "위도": 37.6081392,
+        "경도": 127.1613177,
+        "관리번호": 22110,
+        "설치주소": "다산동 4092"
+    },
+    {
+        "CCTV명": "별내면 스파빌 주변",
+        "설치일자": "2015-03-01",
+        "위도": 37.707284,
+        "경도": 127.119247,
+        "관리번호": 22111,
+        "설치주소": "별내면 청학리 439-6"
+    },
+    {
+        "CCTV명": "진접읍 장현휴먼시아3단지 정문 주변",
+        "설치일자": "2015-03-01",
+        "위도": 37.728963,
+        "경도": 127.194543,
+        "관리번호": 22112,
+        "설치주소": "진접읍 장현리 50-55"
+    },
+    {
+        "CCTV명": "오남읍 E편한세상APT 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.701932,
+        "경도": 127.196869,
+        "관리번호": 22113,
+        "설치주소": "오남읍 양지리 491-1"
+    },
+    {
+        "CCTV명": "화도읍 마석신도브래뉴2차 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.664016,
+        "경도": 127.299604,
+        "관리번호": 22114,
+        "설치주소": "화도읍 묵현리 92-24"
+    },
+    {
+        "CCTV명": "다산2동 가운중학교 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.599661,
+        "경도": 127.157468,
+        "관리번호": 22115,
+        "설치주소": "다산동 723"
+    },
+    {
+        "CCTV명": "다산2동 브릭스타워 주변",
+        "설치일자": "2015-03-01",
+        "위도": 37.6042729,
+        "경도": 127.1561604,
+        "관리번호": 22116,
+        "설치주소": "다산동 718"
+    },
+    {
+        "CCTV명": "다산2동 소방서 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.604727,
+        "경도": 127.1591324,
+        "관리번호": 22117,
+        "설치주소": "다산동 708"
+    },
+    {
+        "CCTV명": "와부읍 강변쌍용아파트 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.5790137,
+        "경도": 127.2189271,
+        "관리번호": 22118,
+        "설치주소": "덕소로 206"
+    },
+    {
+        "CCTV명": "호평동 한라비발디 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.656487,
+        "경도": 127.255384,
+        "관리번호": 22119,
+        "설치주소": "늘을1로 278"
+    },
+    {
+        "CCTV명": "호평동 이석영신흥상회 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.653681,
+        "경도": 127.245888,
+        "관리번호": 22120,
+        "설치주소": "경춘로 1375"
+    },
+    {
+        "CCTV명": "평내동 포레스트힐 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.641891,
+        "경도": 127.237573,
+        "관리번호": 22121,
+        "설치주소": "의안로 124-3"
+    },
+    {
+        "CCTV명": "평내동 금호어울림A 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.644994,
+        "경도": 127.236413,
+        "관리번호": 22122,
+        "설치주소": "경춘로 1256번길 25"
+    },
+    {
+        "CCTV명": "오남읍 오남도서관 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.697601,
+        "경도": 127.197406,
+        "관리번호": 22123,
+        "설치주소": "양지로 240번길 12"
+    },
+    {
+        "CCTV명": "진접읍 진접센트레빌 주변",
+        "설치일자": "2012-06-01",
+        "위도": 37.7403059,
+        "경도": 127.1994566,
+        "관리번호": 22124,
+        "설치주소": "진접읍 부평로 32"
+    },
+    {
+        "CCTV명": "별내동 이마트 주차장출구 주변",
+        "설치일자": "2013-07-01",
+        "위도": 37.6434798,
+        "경도": 127.1260992,
+        "관리번호": 22125,
+        "설치주소": "별내동 994"
+    },
+    {
+        "CCTV명": "별내동 아이파크스위트 사거리 주변",
+        "설치일자": "2013-07-01",
+        "위도": 37.6434979,
+        "경도": 127.127622,
+        "관리번호": 22126,
+        "설치주소": "별내동 996"
+    },
+    {
+        "CCTV명": "별내동 이마트 주차장입구 주변",
+        "설치일자": "2013-07-01",
+        "위도": 37.642345,
+        "경도": 127.125428,
+        "관리번호": 22127,
+        "설치주소": "별내동 996"
+    },
+    {
+        "CCTV명": "호평동 이마트 주차장 출구 주변",
+        "설치일자": "2017-06-01",
+        "위도": 37.654853,
+        "경도": 127.242611,
+        "관리번호": 22128,
+        "설치주소": "호평동 698"
+    },
+    {
+        "CCTV명": "호평동 동원로얄듀크 후문 주변",
+        "설치일자": "2017-06-01",
+        "위도": 37.658024,
+        "경도": 127.251073,
+        "관리번호": 22129,
+        "설치주소": "호평동 720"
+    },
+    {
+        "CCTV명": "퇴계원읍 강남1차아파트 주변",
+        "설치일자": "2017-06-01",
+        "위도": 37.6498272,
+        "경도": 127.1430246,
+        "관리번호": 22130,
+        "설치주소": "퇴계원리 221"
+    },
+    {
+        "CCTV명": "퇴계원읍 우체국 주변",
+        "설치일자": "2017-06-01",
+        "위도": 37.647308,
+        "경도": 127.143117,
+        "관리번호": 22131,
+        "설치주소": "퇴계원리 214-19"
+    },
+    {
+        "CCTV명": "진접읍 백병원 주변",
+        "설치일자": "2017-06-01",
+        "위도": 37.7111529,
+        "경도": 127.1872257,
+        "관리번호": 22132,
+        "설치주소": "진접읍 금곡리 1127-2"
+    },
+    {
+        "CCTV명": "화도읍 창현신한아파트 정문 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.646963,
+        "경도": 127.299483,
+        "관리번호": 22133,
+        "설치주소": "화도읍 창련리 761"
+    },
+    {
+        "CCTV명": "화도읍 광성교회 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.655373,
+        "경도": 127.299703,
+        "관리번호": 22134,
+        "설치주소": "화도읍 마석우리 573"
+    },
+    {
+        "CCTV명": "다산1동 리코빌상가 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.6285905,
+        "경도": 127.1475609,
+        "관리번호": 22135,
+        "설치주소": "다산동 5891-8"
+    },
+    {
+        "CCTV명": "다산1동 메트로타워 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.6254916,
+        "경도": 127.1500074,
+        "관리번호": 22136,
+        "설치주소": "다산동 3653"
+    },
+    {
+        "CCTV명": "다산1동 롯데캐슬아파트 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.6260312,
+        "경도": 127.1551441,
+        "관리번호": 22137,
+        "설치주소": "다산중앙로 146번길"
+    },
+    {
+        "CCTV명": "다산1동 다산화성프라자 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.6214895,
+        "경도": 127.1470358,
+        "관리번호": 22138,
+        "설치주소": "다산순환로 126"
+    },
+    {
+        "CCTV명": "다산1동 e편한세상아파트 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.620717,
+        "경도": 127.1581261,
+        "관리번호": 22139,
+        "설치주소": "다산중앙로 82번길 15"
+    },
+    {
+        "CCTV명": "다산1동 다산지금데시앙A 앞 사거리주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.620031,
+        "경도": 127.1644286,
+        "관리번호": 22140,
+        "설치주소": "다산동 6269-1"
+    },
+    {
+        "CCTV명": "다산1동 행정복지센터 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.614604,
+        "경도": 127.1540501,
+        "관리번호": 22141,
+        "설치주소": "다산중앙로 7"
+    },
+    {
+        "CCTV명": "다산2동 다산한강초등학교 주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.6001272,
+        "경도": 127.1731347,
+        "관리번호": 22142,
+        "설치주소": "다산동 6292"
+    },
+    {
+        "CCTV명": "다산1동 한양수자인아파트 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.6245258,
+        "경도": 127.1469215,
+        "관리번호": 22143,
+        "설치주소": "다산순환로 171"
+    },
+    {
+        "CCTV명": "다산1동 다산중학교 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.6279654,
+        "경도": 127.1578019,
+        "관리번호": 22144,
+        "설치주소": "다산동 6032"
+    },
+    {
+        "CCTV명": "다산1동 유승한내들골든뷰아파트 후문 주변",
+        "설치일자": "2018-10-01",
+        "위도": 37.6207847,
+        "경도": 127.1454372,
+        "관리번호": 22145,
+        "설치주소": "다산중앙로 81번길 10"
+    },
+    {
+        "CCTV명": "다산2동 리더스타워 주변",
+        "설치일자": "2021-10-01",
+        "위도": 37.6112826,
+        "경도": 127.1689156,
+        "관리번호": 22146,
+        "설치주소": "다산동 6193-1"
+    },
+    {
+        "CCTV명": "다산1동 다산가람초등학교 주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.6202799,
+        "경도": 127.1491799,
+        "관리번호": 22147,
+        "설치주소": "다산동 6083"
+    },
+    {
+        "CCTV명": "다산1동 별빛초등학교 주변",
+        "설치일자": "2021-10-01",
+        "위도": 37.6174155,
+        "경도": 127.1662831,
+        "관리번호": 22148,
+        "설치주소": "다산동 3278-1"
+    },
+    {
+        "CCTV명": "다산2동 다산한강중학교 주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.5998175,
+        "경도": 127.1749856,
+        "관리번호": 22149,
+        "설치주소": "다산동 6291"
+    },
+    {
+        "CCTV명": "다산1동 힐스테이트다산A 정문 주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.6222854,
+        "경도": 127.1590035,
+        "관리번호": 22150,
+        "설치주소": "다산동 6263-3"
+    },
+    {
+        "CCTV명": "다산1동 다산고등학교 주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.6262195,
+        "경도": 127.157939,
+        "관리번호": 22151,
+        "설치주소": "다산동 6031"
+    },
+    {
+        "CCTV명": "다산1동 반도유보라아파트 주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.6285172,
+        "경도": 127.1558774,
+        "관리번호": 22152,
+        "설치주소": "다산동 6013"
+    },
+    {
+        "CCTV명": "다산1동 지앤지비즈타워 주변",
+        "설치일자": "2020-07-01",
+        "위도": 37.6219954,
+        "경도": 127.1517156,
+        "관리번호": 22153,
+        "설치주소": "다산동 6259-1"
+    },
+    {
+        "CCTV명": "호평동 호평초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.66743,
+        "경도": 127.24766,
+        "관리번호": 22154,
+        "설치주소": "호평동 372-6"
+    },
+    {
+        "CCTV명": "진건읍 사능초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.6557297,
+        "경도": 127.1833024,
+        "관리번호": 22155,
+        "설치주소": "진건읍 사능리 695"
+    },
+    {
+        "CCTV명": "다산1동 금교초등학교 주변",
+        "설치일자": "2020-04-01",
+        "위도": 37.6139571,
+        "경도": 127.1622624,
+        "관리번호": 22156,
+        "설치주소": "다산동 4002-1"
+    },
+    {
+        "CCTV명": "호평동 평동초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.654941,
+        "경도": 127.248127,
+        "관리번호": 22157,
+        "설치주소": "호평동 703"
+    },
+    {
+        "CCTV명": "별내면 별내초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.711132,
+        "경도": 127.117625,
+        "관리번호": 22158,
+        "설치주소": "별내면 청학리 419-6"
+    },
+    {
+        "CCTV명": "진접읍 주곡초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.7240315,
+        "경도": 127.2065041,
+        "관리번호": 22159,
+        "설치주소": "진접읍 금곡리 1127-42"
+    },
+    {
+        "CCTV명": "퇴계원읍 퇴계원중학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.652959,
+        "경도": 127.1412704,
+        "관리번호": 22160,
+        "설치주소": "퇴계원리 283-1"
+    },
+    {
+        "CCTV명": "와부읍 덕소초등학교 정문 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.5870869,
+        "경도": 127.2144786,
+        "관리번호": 22161,
+        "설치주소": "와부읍 덕소리 488-2"
+    },
+    {
+        "CCTV명": "와부읍 덕소초등학교 후문 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.58821,
+        "경도": 127.213889,
+        "관리번호": 22162,
+        "설치주소": "와부읍 덕소리 431-1"
+    },
+    {
+        "CCTV명": "호평동 구룡초등학교 정문 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.658408,
+        "경도": 127.253531,
+        "관리번호": 22163,
+        "설치주소": "호평동 720"
+    },
+    {
+        "CCTV명": "별내면 경은특수학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.699324,
+        "경도": 127.123368,
+        "관리번호": 22164,
+        "설치주소": "별내면 광전리 162-16"
+    },
+    {
+        "CCTV명": "진접읍 해밀초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.7186548,
+        "경도": 127.1969863,
+        "관리번호": 22165,
+        "설치주소": "진접읍 금곡리 1127-110"
+    },
+    {
+        "CCTV명": "진접읍 진접초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.7175952,
+        "경도": 127.1998244,
+        "관리번호": 22166,
+        "설치주소": "진접읍 금곡리 1127-99"
+    },
+    {
+        "CCTV명": "화도읍 가곡초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.684004,
+        "경도": 127.306756,
+        "관리번호": 22167,
+        "설치주소": "화도읍 가곡리 279-4"
+    },
+    {
+        "CCTV명": "평내동 백봉초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.643859,
+        "경도": 127.240571,
+        "관리번호": 22168,
+        "설치주소": "평내동 648"
+    },
+    {
+        "CCTV명": "와부읍 와부초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.585469,
+        "경도": 127.218425,
+        "관리번호": 22169,
+        "설치주소": "와부읍 덕소리 108-9"
+    },
+    {
+        "CCTV명": "화도읍 송라초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.653635,
+        "경도": 127.302417,
+        "관리번호": 22170,
+        "설치주소": "화도읍 마석우리 584"
+    },
+    {
+        "CCTV명": "오남읍 어람초등학교 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.682002,
+        "경도": 127.212881,
+        "관리번호": 22171,
+        "설치주소": "오남읍 오남리 349-9"
+    },
+    {
+        "CCTV명": "호평동 메가박스 뒷편 주변",
+        "설치일자": "2019-12-01",
+        "위도": 37.655521,
+        "경도": 127.244349,
+        "관리번호": 22172,
+        "설치주소": "호평동 640"
+    },
+    {
+        "CCTV명": "와부읍 예봉초등학교 정문 주변",
+        "설치일자": "2018-06-01",
+        "위도": 37.591657,
+        "경도": 127.221066,
+        "관리번호": 22173,
+        "설치주소": "와부읍 덕소리 196-11"
+    },
+    {
+        "CCTV명": "화도읍 화도농협송라지점 주변",
+        "설치일자": "2018-08-01",
+        "위도": 37.657366,
+        "경도": 127.303458,
+        "관리번호": 22174,
+        "설치주소": "화도읍 마석우리 379-5"
+    },
+    {
+        "CCTV명": "진접읍 진접농협 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.719198,
+        "경도": 127.183591,
+        "관리번호": 22175,
+        "설치주소": "진접읍 장현리 352-23"
+    },
+    {
+        "CCTV명": "다산1동 로데오프라자 주변",
+        "설치일자": "2019-03-01",
+        "위도": 37.6237048,
+        "경도": 127.1516791,
+        "관리번호": 22176,
+        "설치주소": "다산중앙로 123번길 9"
+    },
+    {
+        "CCTV명": "다산1동 MH타워 주변",
+        "설치일자": "2019-03-01",
+        "위도": 37.6248899,
+        "경도": 127.1520613,
+        "관리번호": 22177,
+        "설치주소": "다산동 6061-1"
+    },
+    {
+        "CCTV명": "화도읍 라온프라이빗1단지 주변",
+        "설치일자": "2019-04-01",
+        "위도": 37.65125,
+        "경도": 127.293065,
+        "관리번호": 22178,
+        "설치주소": "화도읍 녹촌리 220-11"
+    },
+    {
+        "CCTV명": "화도읍 은솔초등학교 주변",
+        "설치일자": "2019-04-01",
+        "위도": 37.650657,
+        "경도": 127.295961,
+        "관리번호": 22179,
+        "설치주소": "화도읍 녹촌리 211-9"
+    },
+    {
+        "CCTV명": "다산1동 부영프라자 주변",
+        "설치일자": "2019-03-01",
+        "위도": 37.6088334,
+        "경도": 127.1571736,
+        "관리번호": 22180,
+        "설치주소": "다산동 4001-17"
+    },
+    {
+        "CCTV명": "진접읍 현대병원 주변",
+        "설치일자": "2019-03-01",
+        "위도": 37.716161,
+        "경도": 127.179952,
+        "관리번호": 22181,
+        "설치주소": "진접읍 장현리 661-1"
+    },
+    {
+        "CCTV명": "다산1동 중앙상가 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.6097086,
+        "경도": 127.1595004,
+        "관리번호": 22182,
+        "설치주소": "다산동 4001-7"
+    },    
+    {
+        "CCTV명": "진접읍 진촌설렁탕 주변",
+        "설치일자": "2019-06-01",
+        "위도": 37.7107404,
+        "경도": 127.185033,
+        "관리번호": 22183,
+        "설치주소": "진접읍 연평리 114-1"
+    },
+    {
+        "CCTV명": "화도읍 푸르지오아파트 정문 주변",
+        "설치일자": "2019-08-01",
+        "위도": 37.655773,
+        "경도": 127.298391,
+        "관리번호": 22184,
+        "설치주소": "화도읍 마석우리 600"
+    },
+    {
+        "CCTV명": "화도읍 한누리요양병원 주변",
+        "설치일자": "2019-08-01",
+        "위도": 37.656203,
+        "경도": 127.274728,
+        "관리번호": 22185,
+        "설치주소": "화도읍 묵현리 408-1"
+    },
+    {
+        "CCTV명": "다산1동 리버펠리체 1단지아파트 주변",
+        "설치일자": "2008-02-01",
+        "위도": 37.6082452,
+        "경도": 127.1513044,
+        "관리번호": 22186,
+        "설치주소": "다산동 4308-20"
+    },
+    {
+        "CCTV명": "와부읍 주공2단지 정문 주변",
+        "설치일자": "2005-11-01",
+        "위도": 37.586125,
+        "경도": 127.213547,
+        "관리번호": 22187,
+        "설치주소": "와부읍 덕소리 111-6"
+    },
+    {
+        "CCTV명": "화도읍 마석초등학교 후문 주변",
+        "설치일자": "2008-02-01",
+        "위도": 37.649802,
+        "경도": 127.30406,
+        "관리번호": 22188,
+        "설치주소": "화도읍 창현리 740"
+    },
+    {
+        "CCTV명": "별내면 별내농협청학지점 주변",
+        "설치일자": "2008-02-01",
+        "위도": 37.709171,
+        "경도": 127.117398,
+        "관리번호": 22189,
+        "설치주소": "별내면 청학리 415"
+    },
+    {
+        "CCTV명": "다산1동 유승블루웨일지식센터1 주변",
+        "설치일자": "2020-10-01",
+        "위도": 37.6131591,
+        "경도": 127.1531384,
+        "관리번호": 22190,
+        "설치주소": "다산동 6274-1"
+    },
+    {
+        "CCTV명": "다산2동 남양주시청 제2청사 주변",
+        "설치일자": "2020-04-01",
+        "위도": 37.6106348,
+        "경도": 127.1708693,
+        "관리번호": 22191,
+        "설치주소": "다산동 3159-11"
+    },
+    {
+        "CCTV명": "다산1동 시청자미디어센터 주변",
+        "설치일자": "2020-04-01",
+        "위도": 37.6126299,
+        "경도": 127.1674643,
+        "관리번호": 22192,
+        "설치주소": "다산동 6281"
+    },
+    {
+        "CCTV명": "진접읍 광릉초등학교정문 주변",
+        "설치일자": "2020-06-01",
+        "위도": 37.745336,
+        "경도": 127.207036,
+        "관리번호": 22193,
+        "설치주소": "진접읍 팔야리 768-1"
+    },
+    {
+        "CCTV명": "진접읍 길훈아파트 진입로 주변",
+        "설치일자": "2020-06-01",
+        "위도": 37.717899,
+        "경도": 127.178235,
+        "관리번호": 22194,
+        "설치주소": "진접읍 장현리 600-9"
+    },
+    {
+        "CCTV명": "다산1동 도농중학교사거리 주변",
+        "설치일자": "2020-06-01",
+        "위도": 37.6114573,
+        "경도": 127.1639723,
+        "관리번호": 22195,
+        "설치주소": "다산동 3198-63"
+    },
+    {
+        "CCTV명": "화도읍 라온프라이빗2단지 주변",
+        "설치일자": "2020-06-01",
+        "위도": 37.651917,
+        "경도": 127.296539,
+        "관리번호": 22196,
+        "설치주소": "화도읍 녹촌리 570"
+    },
+    {
+        "CCTV명": "별내동 이래타워사거리 주변",
+        "설치일자": "2020-06-01",
+        "위도": 37.6448322,
+        "경도": 127.1260831,
+        "관리번호": 22197,
+        "설치주소": "별내동 1004"
+    },
+    {
+        "CCTV명": "진접읍 휴먼시아24단지정문 주변",
+        "설치일자": "2020-06-01",
+        "위도": 37.7253134,
+        "경도": 127.2080075,
+        "관리번호": 22198,
+        "설치주소": "진접읍 금곡리 995-1"
+    },
+    {
+        "CCTV명": "진접읍 롯데택배 물류센터 주변",
+        "설치일자": "2020-09-01",
+        "위도": 37.7049009,
+        "경도": 127.1800833,
+        "관리번호": 22199,
+        "설치주소": "진접읍 연평리 159-16"
+    },
+    {
+        "CCTV명": "다산1동 유승블루웨일지식센터2 주변",
+        "설치일자": "2020-10-01",
+        "위도": 37.6131186,
+        "경도": 127.1541754,
+        "관리번호": 22200,
+        "설치주소": "다산동 6274-2"
+    },
+    {
+        "CCTV명": "다산1동 현대아울렛 주차장 입구",
+        "설치일자": "2020-10-01",
+        "위도": 37.614147,
+        "경도": 127.1526721,
+        "관리번호": 22201,
+        "설치주소": "다산동 6273"
+    },
+    {
+        "CCTV명": "다산1동 현대아울렛 주차장 출구",
+        "설치일자": "2020-10-01",
+        "위도": 37.6159669,
+        "경도": 127.1507316,
+        "관리번호": 22202,
+        "설치주소": "다산동 6274"
+    },
+    {
+        "CCTV명": "별내동 아이파크스위트 정문 주변",
+        "설치일자": "2021-01-01",
+        "위도": 37.645572,
+        "경도": 127.126888,
+        "관리번호": 22203,
+        "설치주소": "별내동 1007-5"
+    },
+    {
+        "CCTV명": "다산1동 신해메디컬타워 주변",
+        "설치일자": "2021-01-01",
+        "위도": 37.6251284,
+        "경도": 127.1507577,
+        "관리번호": 22204,
+        "설치주소": "다산동 6260-3"
+    },
+    {
+        "CCTV명": "진접읍 국민은행 주변",
+        "설치일자": "2010-06-01",
+        "위도": 37.718209,
+        "경도": 127.184267,
+        "관리번호": 22205,
+        "설치주소": "진접읍 장현리 288-1"
+    },
+    {
+        "CCTV명": "진접읍 정광산호아파트 주변",
+        "설치일자": "2015-06-01",
+        "위도": 37.726669,
+        "경도": 127.193669,
+        "관리번호": 22206,
+        "설치주소": "진접읍 장현리 51-63"
+    },
+    {
+        "CCTV명": "호평동 하랑초등학교 주변",
+        "설치일자": "2021-07-01",
+        "위도": 37.64971,
+        "경도": 127.256073,
+        "관리번호": 22207,
+        "설치주소": "호평동 산37-19"
+    },
+    {
+        "CCTV명": "진접읍 농협 연평지점 주변",
+        "설치일자": "2021-07-01",
+        "위도": 37.7113035,
+        "경도": 127.1857411,
+        "관리번호": 22208,
+        "설치주소": "진접읍 연평리 56"
+    },
+    {
+        "CCTV명": "별내동 파라곤스퀘어 주변",
+        "설치일자": "2022-01-01",
+        "위도": 37.651562,
+        "경도": 127.128716,
+        "관리번호": 22209,
+        "설치주소": "별내동 975-1"
+    },
+    {
+        "CCTV명": "다산2동 현대테라타워 주변(1) 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.5965993,
+        "경도": 127.1718882,
+        "관리번호": 22210,
+        "설치주소": "다산동 6293-3"
+    },
+    {
+        "CCTV명": "다산2동 현대테라타워 주변(2) 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.5955449,
+        "경도": 127.1713561,
+        "관리번호": 22211,
+        "설치주소": "수석동 283-1"
+    },
+    {
+        "CCTV명": "다산2동 현대테라타워 주변(3) 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.5945904,
+        "경도": 127.1721041,
+        "관리번호": 22212,
+        "설치주소": "다산동 6296"
+    },
+    {
+        "CCTV명": "다산2동 현대테라타워 주변(4) 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.5953427,
+        "경도": 127.1732162,
+        "관리번호": 22213,
+        "설치주소": "다산동 6293"
+    },
+    {
+        "CCTV명": "진접읍 반도프라자 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.7212936,
+        "경도": 127.1950373,
+        "관리번호": 22214,
+        "설치주소": "진접읍 금곡리 972-2"
+    },
+    {
+        "CCTV명": "화도읍 쿠팡 물류센터 진입로 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.616462,
+        "경도": 127.304901,
+        "관리번호": 22215,
+        "설치주소": "화도읍 차산리 428-2"
+    },
+    {
+        "CCTV명": "화도읍 천마초등학교 후문 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.656727,
+        "경도": 127.279495,
+        "관리번호": 22216,
+        "설치주소": "화도읍 묵현리 375-4"
+    },
+    {
+        "CCTV명": "퇴계원읍 쌍용예가아파트입구 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.651245,
+        "경도": 127.150668,
+        "관리번호": 22217,
+        "설치주소": "퇴계원리 128-32"
+    },
+    {
+        "CCTV명": "호평동 알프하임APT진입로 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.653873,
+        "경도": 127.257069,
+        "관리번호": 22218,
+        "설치주소": "호평동 739"
+    },
+    {
+        "CCTV명": "호평동 두산알프하임APT상가 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.652441,
+        "경도": 127.254388,
+        "관리번호": 22219,
+        "설치주소": "호평동 740"
+    },
+    {
+        "CCTV명": "다산1동 세계로마트 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.6186469,
+        "경도": 127.1581227,
+        "관리번호": 22220,
+        "설치주소": "다산동 6130-5"
+    },
+    {
+        "CCTV명": "다산1동 유승한내들아파트 후문 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.6225762,
+        "경도": 127.1532254,
+        "관리번호": 22221,
+        "설치주소": "다산동 6259-1"
+    },
+    {
+        "CCTV명": "다산1동 아이비플레이스아파트 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.626982,
+        "경도": 127.1498336,
+        "관리번호": 22222,
+        "설치주소": "다산동 6258"
+    },
+    {
+        "CCTV명": "별내동 덕송초등학교 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.66963,
+        "경도": 127.115178,
+        "관리번호": 22223,
+        "설치주소": "별내동 810"
+    },
+    {
+        "CCTV명": "진접읍 장현초등학교 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.718712,
+        "경도": 127.182124,
+        "관리번호": 22224,
+        "설치주소": "진접읍 장현리 379"
+    },
+    {
+        "CCTV명": "화도읍 마석초등학교 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.648717,
+        "경도": 127.303972,
+        "관리번호": 22225,
+        "설치주소": "화도읍 창현리 743"
+    },
+    {
+        "CCTV명": "화도읍 차산초등학교 후문 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.636678,
+        "경도": 127.301768,
+        "관리번호": 22226,
+        "설치주소": "화도읍 차산리 79-11"
+    },
+    {
+        "CCTV명": "다산2동 가운초등학교 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.6011422,
+        "경도": 127.1564795,
+        "관리번호": 22227,
+        "설치주소": "다산동 723"
+    },
+    {
+        "CCTV명": "진건읍 화성아파트 후문 주변",
+        "설치일자": "2014-06-01",
+        "위도": 37.6585035,
+        "경도": 127.1749147,
+        "관리번호": 22228,
+        "설치주소": "진건읍 용정리 767-20"
+    },
+    {
+        "CCTV명": "다산1동 도금단지삼거리 주변",
+        "설치일자": "2014-06-01",
+        "위도": 37.6102686,
+        "경도": 127.1503597,
+        "관리번호": 22229,
+        "설치주소": "다산동 4331-1"
+    },
+    {
+        "CCTV명": "다산1동 현대프리미어캠퍼스 주변",
+        "설치일자": "2022-05-01",
+        "위도": 37.6122156,
+        "경도": 127.1536173,
+        "관리번호": 22230,
+        "설치주소": "다산동 6275"
+    },
+    {
+        "CCTV명": "오남읍 지오빌딩 주변",
+        "설치일자": "2022-12-01",
+        "위도": 37.698618,
+        "경도": 127.202283,
+        "관리번호": 22232,
+        "설치주소": "오남읍 양지리 100-11"
+    },
+    {
+        "CCTV명": "화도읍 은솔초등학교 후문 주변",
+        "설치일자": "2022-12-01",
+        "위도": 37.650768,
+        "경도": 127.294526,
+        "관리번호": 22233,
+        "설치주소": "화도읍 녹촌리 570"
+    },
+    {
+        "CCTV명": "호평동 체육문화센터 출구 주변",
+        "설치일자": "2022-12-01",
+        "위도": 37.659245,
+        "경도": 127.242479,
+        "관리번호": 22234,
+        "설치주소": "호평동 685-1"
+    },
+    {
+        "CCTV명": "다산2동 한강프리미어 갤러리 빌딩 주변",
+        "설치일자": "2023-05-01",
+        "위도": 37.5985313,
+        "경도": 127.1745725,
+        "관리번호": 22235,
+        "설치주소": "다산동 6295"
+    },
+    {
+        "CCTV명": "화도읍 마석2호공원앞 사거리",
+        "설치일자": "2023-06-01",
+        "위도": 37.659462,
+        "경도": 127.304291,
+        "관리번호": 22236,
+        "설치주소": "화도읍 마석우리 350"
+    },
+    {
+        "CCTV명": "진접읍 진접역 사거리",
+        "설치일자": "2023-06-01",
+        "위도": 37.7203251,
+        "경도": 127.2033391,
+        "관리번호": 22237,
+        "설치주소": "진접읍 금곡리 1127-81"
+    },
+    {
+        "CCTV명": "진접읍 장현리 우정코아 빌딩주변",
+        "설치일자": "2023-06-01",
+        "위도": 37.715904,
+        "경도": 127.179072,
+        "관리번호": 22238,
+        "설치주소": "진접읍 장현리 600-9"
+    },
+    {
+        "CCTV명": "다산1동 다산해모로아파트 주변",
+        "설치일자": "2023-06-01",
+        "위도": 37.6064188,
+        "경도": 127.1523285,
+        "관리번호": 22239,
+        "설치주소": "다산동 6298"
+    },
+    {
+        "CCTV명": "다산1동 다산신도시 자연앤 푸르지오A 어린이집 주변",
+        "설치일자": "2023-06-01",
+        "위도": 37.613565,
+        "경도": 127.164386,
+        "관리번호": 22240,
+        "설치주소": "다산동 3488-5"
+    },
+    {
+        "CCTV명": "다산1동 다산힐스테이트 후문 앞",
+        "설치일자": "2023-06-01",
+        "위도": 37.6246609,
+        "경도": 127.155918,
+        "관리번호": 22241,
+        "설치주소": "다산동 6263"
+    },
+    {
+        "CCTV명": "별내동 별내별가람역 덕송2로길 주변",
+        "설치일자": "2023-06-01",
+        "위도": 37.6663873,
+        "경도": 127.1130777,
+        "관리번호": 22242,
+        "설치주소": "별내동 836"
+    },
+    {
+        "CCTV명": "별내동 별내하나로마트앞사거리 주변",
+        "설치일자": "2023-06-01",
+        "위도": 37.649581,
+        "경도": 127.128937,
+        "관리번호": 22243,
+        "설치주소": "별내동 976"
+    },
+    {
+        "CCTV명": "별내동 혜성빌딩앞 삼거리",
+        "설치일자": "2023-10-01",
+        "위도": 37.664175,
+        "경도": 127.112782,
+        "관리번호": 22244,
+        "설치주소": "별내동 1151-3"
+    },
+    {
+        "CCTV명": "별내동 물류창고 삼거리 주변",
+        "설치일자": "2023-10-01",
+        "위도": 37.6758094,
+        "경도": 127.1142052,
+        "관리번호": 22245,
+        "설치주소": "별내동 820"
+    },
+    {
+        "CCTV명": "별내동 푸르지오아파트 삼거리 주변",
+        "설치일자": "2023-10-01",
+        "위도": 37.667194,
+        "경도": 127.130865,
+        "관리번호": 22246,
+        "설치주소": "별내동 869-3"
+    },
+    {
+        "CCTV명": "화도읍 심석고등학교 앞 삼거리",
+        "설치일자": "2023-10-01",
+        "위도": 37.656481,
+        "경도": 127.305845,
+        "관리번호": 22247,
+        "설치주소": "화도읍 마석우리 350"
+    },
+    {
+        "CCTV명": "별내동 자이더스타 오피스텔 앞 사거리",
+        "설치일자": "2024-02-01",
+        "위도": 37.643497,
+        "경도": 127.124331,
+        "관리번호": 22250,
+        "설치주소": "별내동 1000"
+    },
+    {
+        "CCTV명": "별내동 자이더스타 아파트 앞 사거리",
+        "설치일자": "2024-02-01",
+        "위도": 37.6454088,
+        "경도": 127.1224188,
+        "관리번호": 22251,
+        "설치주소": "별내동 1009"
+    },
+    {
+        "CCTV명": "별내동 필드림골프연습장 주변",
+        "설치일자": "2024-05-01",
+        "위도": 37.653114,
+        "경도": 127.120254,
+        "관리번호": 22252,
+        "설치주소": "별내동 1060-2"
+    },
+    {
+        "CCTV명": "다산1동 강희프라자 주변",
+        "설치일자": "2024-05-01",
+        "위도": 37.6254045,
+        "경도": 127.1539164,
+        "관리번호": 22253,
+        "설치주소": "다산동 6262-1"
+    },
+    {
+        "CCTV명": "다산2동 동화중고등학교 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.6076423,
+        "경도": 127.1607001,
+        "관리번호": 22261,
+        "설치주소": "다산동 4091-6"
+    },
+    {
+        "CCTV명": "다산2동 아인시티3 빌딩 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.6009064,
+        "경도": 127.1740554,
+        "관리번호": 22262,
+        "설치주소": "다산동 6288"
+    },
+    {
+        "CCTV명": "다산1동 꽃다비 유치원 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.6196356,
+        "경도": 127.162662,
+        "관리번호": 22263,
+        "설치주소": "다산동 6271-7"
+    },
+    {
+        "CCTV명": "다산1동 다산고등학교 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.6250261,
+        "경도": 127.1561086,
+        "관리번호": 22264,
+        "설치주소": "다산동 6254-9"
+    },
+    {
+        "CCTV명": "진접읍 부평리 센트레빌시티1단지 APT상가 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.7403289,
+        "경도": 127.2009724,
+        "관리번호": 22265,
+        "설치주소": "진접읍 부평리 767-6"
+    },
+    {
+        "CCTV명": "와부읍 덕소리 강변삼익아파트 109동 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.586132,
+        "경도": 127.206939,
+        "관리번호": 22266,
+        "설치주소": "와부읍 덕소리 600-39"
+    },
+    {
+        "CCTV명": "와부읍 덕소리 와부물놀이장 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.586257,
+        "경도": 127.209292,
+        "관리번호": 22267,
+        "설치주소": "와부읍 덕소리 600-76"
+    },
+    {
+        "CCTV명": "화도읍 차산리 영남아파트 진입로 주변",
+        "설치일자": "2024-06-01",
+        "위도": 37.637384,
+        "경도": 127.303924,
+        "관리번호": 22268,
+        "설치주소": "화도읍 차산리 63-69"
+    },
+    {
+        "CCTV명": "다산동 다산안강럭스나인오피스텔주변",
+        "설치일자": "2024-12-01",
+        "위도": 37.6241543,
+        "경도": 127.1475904,
+        "관리번호": 22270,
+        "설치주소": "다산동 6257-1"
+    },
+    {
+        "CCTV명": "금곡동 금곡역 주변",
+        "설치일자": "2025-03-01",
+        "위도": 37.63689,
+        "경도": 127.20736,
+        "관리번호": 22271,
+        "설치주소": "금곡동 403-8"
+    }
+      // 다른 CCTV 데이터를 이 배열에 추가할 수 있습니다.
+    ];
+    
+    cctvData.forEach(cctv => {
+      if (cctv.위도 && cctv.경도) {
+        addMarkerLonLat(cctv.경도, cctv.위도, {
+          title: cctv.CCTV명,
+          category: 'CCTV',
+          info: cctv
+        });
+      }
+    });
+    refreshStats();
+    alert('CCTV 마커가 추가되었습니다.');
+}
+
+  // 기타 유틸리티 함수
+  function ensureKey() { if (!currentApiKey) throw new Error('VWorld REST 키가 설정되지 않았습니다.'); }
+  function distanceMeters(lon1, lat1, lon2, lat2) { const toRad = x => x * Math.PI / 180; const R = 6371e3; const dLat = toRad(lat2 - lat1); const dLon = toRad(lon2 - lon1); const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2); const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return R * c; }
+  function bboxFromCenter(lon, lat, radiusM) { const latR = lat * Math.PI / 180; const metersPerLatDeg = 111132.954 - 559.822 * Math.cos(2 * latR) + 1.175 * Math.cos(4 * latR); const metersPerLonDeg = 111319.491 * Math.cos(latR); const deltaLat = radiusM / metersPerLatDeg; const deltaLon = radiusM / metersPerLonDeg; return [lon - deltaLon, lat - deltaLat, lon + deltaLon, lat + deltaLat]; }
+  function escapeHtml(unsafe) { return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
+  // 주소 탐지 휴리스틱
+  function guessLat(cols) { return cols.find(c => /^(?:lat|latitude|위도)$/i.test(c)); }
+  function guessLon(cols) { return cols.find(c => /^(?:lon|lng|longitude|경도)$/i.test(c)); }
+  function guessTitle(cols) { return cols.find(c => /^(?:title|name|제목|명칭|주소)$/i.test(c)); }
+  function guessCategory(cols) { return cols.find(c => /^(?:category|분류|구분|카테고리)$/i.test(c)); }
+  function jsonp(url, callback) { return new Promise((resolve, reject) => { const cbName = callback + Math.random().toString(36).substring(2, 9); const script = document.createElement('script'); window[cbName] = (data) => { delete window[cbName]; document.body.removeChild(script); resolve(data); }; script.onerror = (e) => { delete window[cbName]; document.body.removeChild(script); reject(new Error('JSONP failed')); }; script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + callback + '=' + cbName; document.body.appendChild(script); }); }
+</script>
+</body>
+</html>
